@@ -6,7 +6,7 @@ If any tests fail, stop and report — do not stage or commit.
 
 Run `git status` to see the full working tree state, then `git diff --staged` to inspect what is already staged.
 
-Stage all relevant changed and untracked files with `git add <file>`. For `.sh` scripts, always preserve execution rights using `git add --chmod=+x <file>` instead of plain `git add`.
+Stage all relevant changed and untracked files with `git add <file>`. For `.sh` scripts, always preserve execution rights using `git add --chmod=+x <file>` instead of plain `git add`. Never stage files that are listed in `.gitignore`.
 
 Describe the changes concisely, then commit with a clear message that reflects the intent of the changes (not just what files changed).
 
