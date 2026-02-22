@@ -44,6 +44,10 @@ Ask / Cron ──► Read sources ──► Score (L1) ──► Select Top N �
 - **Level 2 scoring**: Refined pass on summarized text for final ranking.
 - **Feedback loop**: User scores update the Interest model (`common_keyword_interests` and `category_interests`), improving future L1 scoring.
 
+## Git
+
+**Never commit automatically.** Only commit when the user explicitly runs the `/commit` command.
+
 ## Key Conventions
 
 - **Callback signature**: `callback(success: bool, error: str)` — used on every async operation. Callbacks that return a value add a third positional argument (e.g. `callback(success, error, content)`).

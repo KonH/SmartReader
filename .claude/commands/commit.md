@@ -1,6 +1,8 @@
-Run `git diff --staged` to see what is staged. Describe the changes concisely, then commit them with a clear commit message that reflects the intent of the changes (not just what files changed).
+Run `git status` to see the full working tree state, then `git diff --staged` to inspect what is already staged.
 
-Before committing, run `git status` to identify any relevant unstaged files and stage them with `git add <file>`. For `.sh` scripts, always preserve execution rights using `git add --chmod=+x <file>` instead of plain `git add`.
+Stage all relevant changed and untracked files with `git add <file>`. For `.sh` scripts, always preserve execution rights using `git add --chmod=+x <file>` instead of plain `git add`.
+
+Describe the changes concisely, then commit with a clear message that reflects the intent of the changes (not just what files changed).
 
 Use this commit message format:
 ```
