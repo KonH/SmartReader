@@ -5,7 +5,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .._types import Callback, TriggerCallback
+from .._types import Callback, FeedbackListCallback, TriggerCallback
 from ..types.content import Content
 from ..types.params import TriggerParams, UIParams
 from . import UI
@@ -28,10 +28,10 @@ class TerminalUI(UI):
             return
         callback(True, "", TriggerParams(mode="ask"))
 
-    def show_content_list(self, content: list[Content], callback: Callback) -> None:
+    def show_content_list(self, content: list[Content], callback: FeedbackListCallback) -> None:
         if not content:
             self._console.print("[dim]No content to show.[/dim]")
-            callback(True, "")
+            callback(True, "", [])
             return
 
         table = Table(
@@ -54,7 +54,40 @@ class TerminalUI(UI):
             table.add_row(str(i), score_str, item.title, item.source_id, summary_str)
 
         self._console.print(table)
-        callback(True, "")
+
+        feedback = self._collect_feedback(content)
+        callback(True, "", feedback)
+
+    def _collect_feedback(self, content: list[Content]) -> list[tuple[str, bool]]:
+        """Prompt user for upvote/downvote on displayed items."""
+        self._console.print(
+            "\n[dim]Rate items: [bold]u[/bold]<n> upvote · [bold]d[/bold]<n> downvote · "
+            "[bold]Enter[/bold] to finish[/dim]"
+        )
+        idx_to_id = {str(i): item.id for i, item in enumerate(content, 1)}
+        feedback: list[tuple[str, bool]] = []
+
+        while True:
+            try:
+                raw = self._console.input("[dim]>[/dim] ").strip()
+            except EOFError:
+                break
+            if not raw:
+                break
+            action, num_str = raw[0].lower(), raw[1:]
+            if action not in ("u", "d") or not num_str.isdigit():
+                self._console.print("[yellow]Use u<n> or d<n>, e.g. u3 to upvote #3[/yellow]")
+                continue
+            item_id = idx_to_id.get(num_str)
+            if item_id is None:
+                self._console.print(f"[yellow]No item #{num_str}[/yellow]")
+                continue
+            upvote = action == "u"
+            feedback.append((item_id, upvote))
+            verb = "[green]Upvoted[/green]" if upvote else "[red]Downvoted[/red]"
+            self._console.print(f"{verb} #{num_str}")
+
+        return feedback
 
     def receive_score(self, id: str, score: float) -> None:
         pass

@@ -6,9 +6,11 @@ import sys
 
 from ._logging import setup as setup_logging
 from .config.toml import TOMLConfig
-from .input.mock import MockInput
+from .input.rss import RSSReader
+from .input.source_reader import SourceReader
 from .main import Coordinator
-from .scoring.mock import MockScoring
+from .scoring.adapter import ScoringAdapter
+from .scoring.keyword import L1KeywordScoring, L2KeywordScoring
 from .secrets.mock import MockSecrets
 from .state.sqlite import SQLiteState
 from .summarize.mock import MockSummarize
@@ -20,12 +22,21 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
+    config = TOMLConfig()
+    state = SQLiteState()
+
+    shared_common: dict[str, float] = {}
+    shared_category: dict[str, dict[str, float]] = {}
+
     coordinator = Coordinator(
         ui=TerminalUI(),
-        input=MockInput(),
-        config=TOMLConfig(),
-        state=SQLiteState(),
-        scoring=MockScoring(),
+        input=SourceReader(config=config, readers={"rss": RSSReader()}),
+        config=config,
+        state=state,
+        scoring=ScoringAdapter(
+            l1=L1KeywordScoring(state, config, shared_common, shared_category),
+            l2=L2KeywordScoring(state, config, shared_common, shared_category),
+        ),
         summarize=MockSummarize(),
         secrets=MockSecrets(),
     )

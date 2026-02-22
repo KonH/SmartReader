@@ -81,11 +81,11 @@ def test_write_overwrites_previous_value() -> None:
     state = SQLiteState(path=_MEMORY)
     load(state)
 
-    write(state, "last_run_ts", {"last_run_ts": 1000.0})
-    write(state, "last_run_ts", {"last_run_ts": 2000.0})
+    write(state, "source_bbc_world", {"active": True, "lastReadTs": 1000.0})
+    write(state, "source_bbc_world", {"active": True, "lastReadTs": 2000.0})
 
-    _, _, val = read(state, "last_run_ts")
-    assert val == {"last_run_ts": 2000.0}
+    _, _, val = read(state, "source_bbc_world")
+    assert val == {"active": True, "lastReadTs": 2000.0}
 
 
 def test_write_nested_dict() -> None:

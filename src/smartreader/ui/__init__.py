@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from .._types import Callback, TriggerCallback, ContentCallback
+from .._types import Callback, TriggerCallback, FeedbackListCallback
 from ..types.content import Content
 from ..types.params import UIParams
 
@@ -13,7 +13,7 @@ class UI(ABC):
     def wait_trigger(self, callback: TriggerCallback) -> None: ...
 
     @abstractmethod
-    def show_content_list(self, content: list[Content], callback: Callback) -> None: ...
+    def show_content_list(self, content: list[Content], callback: FeedbackListCallback) -> None: ...
 
     @abstractmethod
     def receive_score(self, id: str, score: float) -> None: ...

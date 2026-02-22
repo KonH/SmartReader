@@ -16,9 +16,23 @@ _CONFIG_PATH = Path("config.toml")
 _DEFAULTS: dict = {
     "scoring": {
         "top_n": 10,
+        "upvote_power": 1.5,
+        "downvote_power": -1.0,
         "keyword": {
             "common_weight": 1.0,
             "category_weight": 1.5,
+            "skip": [
+                "a", "an", "the", "this", "that", "these", "those",
+                "i", "me", "my", "we", "our", "you", "your",
+                "he", "his", "she", "her", "it", "its", "they", "their",
+                "is", "are", "was", "were", "be", "been", "being", "am",
+                "have", "has", "had", "do", "does", "did",
+                "will", "would", "could", "should", "may", "might", "shall", "can", "must",
+                "to", "of", "in", "on", "at", "by", "for", "with", "from", "into", "onto",
+                "and", "or", "but", "not", "no", "nor", "so", "yet",
+                "as", "if", "then", "than", "so", "up", "out", "about",
+                "all", "also", "just", "more", "new", "now", "one", "other", "over", "said", "such",
+            ],
         },
     },
 }

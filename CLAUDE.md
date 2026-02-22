@@ -14,6 +14,12 @@ source .venv/bin/activate
 pip install -r requirements.txt   # once created
 ```
 
+## Running Tests
+
+```bash
+PYTHONPATH=src .venv/bin/python -m pytest tests/
+```
+
 Runtime on WSL (Windows Subsystem for Linux). Secrets are provided via **environment variables** (not config files).
 
 ## Architecture

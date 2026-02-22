@@ -13,7 +13,6 @@ from .state import State
 from .summarize import Summarize
 from .types.content import Content
 from .types.params import ConfigParams, SecretsParams, TriggerParams, UIParams
-from .types.values import StateValue
 from .ui import UI
 
 logger = logging.getLogger(__name__)
@@ -21,7 +20,6 @@ logger = logging.getLogger(__name__)
 _EFFORT_L1 = 1
 _EFFORT_L2 = 2
 _TOP_N_DEFAULT = 10
-_LAST_RUN_KEY = "last_run_ts"
 
 
 class Coordinator:
@@ -29,13 +27,15 @@ class Coordinator:
     Initializes all modules in dependency order and runs the pipeline loop:
 
         wait_trigger
-            → read sources
+            → read per-source states
+            → read sources (per-source, using lastReadTs)
             → score L1 (keyword pass)
             → select top N
             → summarize
             → score L2 (refined pass)
-            → show
-            → update state
+            → show + collect feedback
+            → update per-source state
+            → process feedback (update interests)
             ↺ (loop)
     """
 
@@ -57,6 +57,8 @@ class Coordinator:
         self._summarize = summarize
         self._secrets = secrets
         self._running = False
+        self._active_source_ids: list[str] = []
+        self._shown_items: list[Content] = []
 
     # ── Initialization ────────────────────────────────────────────────────────
 
@@ -118,27 +120,69 @@ class Coordinator:
         self._running = False
         self._ui.terminate()
 
-    # ── Trigger ───────────────────────────────────────────────────────────────
+    # ── Trigger → per-source reads ────────────────────────────────────────────
 
     def _on_trigger(self, ok: bool, err: str, params: TriggerParams) -> None:
         if not ok:
             logger.error("trigger: %s", err)
             return
         logger.info("trigger received: mode=%s", params.mode)
-        self._state.read_value(
-            _LAST_RUN_KEY,
-            lambda ok2, err2, val: self._on_last_ts(ok2, err2, val),
+        self._config.read_value(
+            "sources",
+            lambda ok2, err2, val: self._on_sources_config(ok2, err2, val),
         )
 
-    def _on_last_ts(self, ok: bool, err: str, val: StateValue) -> None:
-        last_ts: float = float(val.get(_LAST_RUN_KEY, 0.0)) if ok and isinstance(val, dict) else 0.0
-        logger.info("reading sources since ts=%.0f", last_ts)
-        self._input.read_sources(
-            last_ts, "", "",
-            lambda ok2, err2, items: self._on_sources_read(ok2, err2, items),
+    def _on_sources_config(self, ok: bool, err: str, val: dict) -> None:
+        source_ids = list(val.keys()) if ok and isinstance(val, dict) else []
+        if not source_ids:
+            logger.info("no sources configured")
+            return
+        self._active_source_ids = source_ids
+        self._collect_source_states(source_ids, {})
+
+    def _collect_source_states(self, remaining: list[str], states: dict[str, float]) -> None:
+        """Read source_<id> state for each source to get its lastReadTs."""
+        if not remaining:
+            self._gather_source_content(
+                [(sid, ts) for sid, ts in states.items()], []
+            )
+            return
+        sid, *rest = remaining
+        self._state.read_value(
+            f"source_{sid}",
+            lambda ok, err, val: self._on_source_state(ok, err, val, sid, rest, states),
         )
+
+    def _on_source_state(
+        self, ok: bool, err: str, val: dict, sid: str,
+        remaining: list[str], states: dict[str, float],
+    ) -> None:
+        last_ts = float(val.get("lastReadTs", 0.0)) if ok and isinstance(val, dict) else 0.0
+        self._collect_source_states(remaining, {**states, sid: last_ts})
 
     # ── Step 1: read sources ──────────────────────────────────────────────────
+
+    def _gather_source_content(
+        self, remaining: list[tuple[str, float]], all_items: list[Content]
+    ) -> None:
+        """Call read_sources per source with its specific lastReadTs; combine results."""
+        if not remaining:
+            self._on_sources_read(True, "", all_items)
+            return
+        (sid, last_ts), *rest = remaining
+        logger.info("reading source %r since ts=%.0f", sid, last_ts)
+        self._input.read_sources(
+            last_ts, "", sid,
+            lambda ok, err, items: self._on_one_source(ok, err, items, sid, rest, all_items),
+        )
+
+    def _on_one_source(
+        self, ok: bool, err: str, items: list[Content],
+        sid: str, remaining: list[tuple[str, float]], all_items: list[Content],
+    ) -> None:
+        if not ok:
+            logger.warning("source %r read failed: %s", sid, err)
+        self._gather_source_content(remaining, all_items + (items if ok else []))
 
     def _on_sources_read(self, ok: bool, err: str, items: list[Content]) -> None:
         if not ok:
@@ -177,7 +221,7 @@ class Coordinator:
             lambda ok, err, val: self._on_top_n(ok, err, val, items),
         )
 
-    def _on_top_n(self, ok: bool, err: str, val: StateValue, items: list[Content]) -> None:
+    def _on_top_n(self, ok: bool, err: str, val: dict, items: list[Content]) -> None:
         n: int = int(val.get("top_n", _TOP_N_DEFAULT)) if ok and isinstance(val, dict) else _TOP_N_DEFAULT
         top = sorted(items, key=lambda c: c.score or 0.0, reverse=True)[:n]
         logger.info("selected top %d/%d item(s) for summarization", len(top), len(items))
@@ -219,20 +263,61 @@ class Coordinator:
 
         self._scoring.score(item, _EFFORT_L2, on_score)
 
-    # ── Step 6: show ──────────────────────────────────────────────────────────
+    # ── Step 6: show + collect feedback ───────────────────────────────────────
 
     def _show(self, items: list[Content]) -> None:
         final = sorted(items, key=lambda c: c.score or 0.0, reverse=True)
+        self._shown_items = final
         logger.info("showing %d item(s) to ui", len(final))
         self._ui.show_content_list(final, self._on_shown)
 
-    def _on_shown(self, ok: bool, err: str) -> None:
+    def _on_shown(self, ok: bool, err: str, feedback: list[tuple[str, bool]]) -> None:
         if not ok:
             logger.error("show: %s", err)
             return
-        logger.info("pipeline complete, updating last_run_ts")
+        logger.info("pipeline complete, updating per-source state")
+        now = time.time()
+        self._update_source_states(list(self._active_source_ids), now)
+        if feedback:
+            logger.info("processing %d feedback item(s)", len(feedback))
+            self._process_feedback(feedback, self._shown_items, 0)
+
+    # ── Step 7: update per-source state ───────────────────────────────────────
+
+    def _update_source_states(self, remaining: list[str], now: float) -> None:
+        if not remaining:
+            self._state.write_value(
+                "sourceStates",
+                {"ids": self._active_source_ids},
+                lambda ok, err: logger.error("state write sourceStates: %s", err) if not ok else None,
+            )
+            return
+        sid, *rest = remaining
         self._state.write_value(
-            _LAST_RUN_KEY,
-            {_LAST_RUN_KEY: time.time()},
-            lambda ok2, err2: logger.error("state write: %s", err2) if not ok2 else None,
+            f"source_{sid}",
+            {"active": True, "lastReadTs": now},
+            lambda ok, err: self._update_source_states(rest, now),
         )
+
+    # ── Step 8: process feedback ──────────────────────────────────────────────
+
+    def _process_feedback(
+        self, feedback: list[tuple[str, bool]], items: list[Content], idx: int
+    ) -> None:
+        if idx >= len(feedback):
+            logger.info("feedback processing done")
+            return
+        item_id, upvote = feedback[idx]
+        content = next((c for c in items if c.id == item_id), None)
+        if content is None:
+            logger.warning("feedback for unknown item id: %s", item_id)
+            self._process_feedback(feedback, items, idx + 1)
+            return
+        logger.info("updating interests for %r: upvote=%s", item_id, upvote)
+
+        def on_updated(ok: bool, err: str) -> None:
+            if not ok:
+                logger.error("update_score error for %s: %s", item_id, err)
+            self._process_feedback(feedback, items, idx + 1)
+
+        self._scoring.update_score(content, upvote, on_updated)

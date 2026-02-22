@@ -10,3 +10,6 @@ class Scoring(ABC):
 
     @abstractmethod
     def score(self, content: Content, effort_level: int, callback: ScoreCallback) -> None: ...
+
+    @abstractmethod
+    def update_score(self, content: Content, upvote: bool, callback: Callback) -> None: ...

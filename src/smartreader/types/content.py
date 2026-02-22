@@ -11,3 +11,4 @@ class Content:
     published_ts: float
     summary: str | None = None
     score: float | None = None
+    category: str | None = None
