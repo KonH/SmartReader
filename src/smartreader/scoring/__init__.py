@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-from ._types import Callback, ScoreCallback
-from .types.content import Content
+from .._types import Callback, ScoreCallback
+from ..types.content import Content
 
 
 class Scoring(ABC):

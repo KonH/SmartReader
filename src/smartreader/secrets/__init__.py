@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-from ._types import Callback, StringCallback
-from .types.params import SecretsParams
+from .._types import Callback, StringCallback
+from ..types.params import SecretsParams
 
 
 class Secrets(ABC):

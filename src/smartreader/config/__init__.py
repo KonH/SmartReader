@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 
-from ._types import Callback, StateValueCallback
-from .types.params import ConfigParams
-from .types.values import StateValue
+from .._types import Callback, StateValueCallback
+from ..types.params import ConfigParams
+from ..types.values import StateValue
 
 
 class Config(ABC):

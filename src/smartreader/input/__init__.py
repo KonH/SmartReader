@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from ._types import ContentListCallback
+from .._types import ContentListCallback
 
 
 class Input(ABC):

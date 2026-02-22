@@ -4,43 +4,38 @@ from __future__ import annotations
 import logging
 import sys
 
+from .config.mock import MockConfig
+from .input.mock import MockInput
+from .main import Coordinator
+from .scoring.mock import MockScoring
+from .secrets.mock import MockSecrets
+from .state.mock import MockState
+from .summarize.mock import MockSummarize
+from .ui.mock import MockUI
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    # Wire concrete implementations here once available, e.g.:
-    #
-    #   from smartreader.impl.ui_terminal import TerminalUI
-    #   from smartreader.impl.input_rss import RSSInput
-    #   from smartreader.impl.config_toml import TOMLConfig
-    #   from smartreader.impl.state_sqlite import SQLiteState
-    #   from smartreader.impl.scoring_keyword import KeywordScoring
-    #   from smartreader.impl.summarize_openai import OpenAISummarize
-    #   from smartreader.impl.secrets_env import EnvSecrets
-    #   from smartreader.main import Coordinator
-    #
-    #   coordinator = Coordinator(
-    #       ui=TerminalUI(),
-    #       input=RSSInput(),
-    #       config=TOMLConfig(),
-    #       state=SQLiteState(),
-    #       scoring=KeywordScoring(),
-    #       summarize=OpenAISummarize(),
-    #       secrets=EnvSecrets(),
-    #   )
-    #
-    #   def on_init(ok: bool, err: str) -> None:
-    #       if not ok:
-    #           logger.error("init failed: %s", err)
-    #           sys.exit(1)
-    #       coordinator.run()
-    #
-    #   coordinator.initialize(on_init)
+    coordinator = Coordinator(
+        ui=MockUI(),
+        input=MockInput(),
+        config=MockConfig(),
+        state=MockState(),
+        scoring=MockScoring(),
+        summarize=MockSummarize(),
+        secrets=MockSecrets(),
+    )
 
-    print("No concrete implementations wired yet. See src/smartreader/__main__.py.", file=sys.stderr)
-    sys.exit(1)
+    def on_init(ok: bool, err: str) -> None:
+        if not ok:
+            logger.error("init failed: %s", err)
+            sys.exit(1)
+        coordinator.run()
+
+    coordinator.initialize(on_init)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 
-from ._types import Callback, TriggerCallback, ContentCallback
-from .types.content import Content
-from .types.params import UIParams
+from .._types import Callback, TriggerCallback, ContentCallback
+from ..types.content import Content
+from ..types.params import UIParams
 
 
 class UI(ABC):
