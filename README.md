@@ -16,6 +16,24 @@ Ask / Cron ──► Read sources ──► Score (L1) ──► Select Top N �
 
 ---
 
+## Setup & Usage
+
+```bash
+# Create and activate the virtualenv
+python -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run
+./run.sh
+```
+
+> `run.sh` activates the virtualenv automatically — after initial setup you can invoke it directly without sourcing the venv yourself.
+
+---
+
 ## Documentation
 
 | Document | Description |
