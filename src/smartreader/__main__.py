@@ -5,14 +5,14 @@ import logging
 import sys
 
 from ._logging import setup as setup_logging
-from .config.mock import MockConfig
+from .config.toml import TOMLConfig
 from .input.mock import MockInput
 from .main import Coordinator
 from .scoring.mock import MockScoring
 from .secrets.mock import MockSecrets
-from .state.mock import MockState
+from .state.sqlite import SQLiteState
 from .summarize.mock import MockSummarize
-from .ui.mock import MockUI
+from .ui.terminal import TerminalUI
 
 setup_logging()
 
@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     coordinator = Coordinator(
-        ui=MockUI(),
+        ui=TerminalUI(),
         input=MockInput(),
-        config=MockConfig(),
-        state=MockState(),
+        config=TOMLConfig(),
+        state=SQLiteState(),
         scoring=MockScoring(),
         summarize=MockSummarize(),
         secrets=MockSecrets(),
@@ -36,7 +36,11 @@ def main() -> None:
             sys.exit(1)
         coordinator.run()
 
-    coordinator.initialize(on_init)
+    try:
+        coordinator.initialize(on_init)
+    except KeyboardInterrupt:
+        print()
+        sys.exit(0)
 
 
 if __name__ == "__main__":

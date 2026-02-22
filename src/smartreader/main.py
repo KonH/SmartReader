@@ -173,7 +173,7 @@ class Coordinator:
 
     def _select_top_n(self, items: list[Content]) -> None:
         self._config.read_value(
-            "top_n",
+            "scoring",
             lambda ok, err, val: self._on_top_n(ok, err, val, items),
         )
 

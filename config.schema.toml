@@ -1,0 +1,17 @@
+# SmartReader configuration schema
+# Copy this file to config.toml and adjust values to your needs.
+
+[scoring]
+top_n = 10            # Number of top-scoring articles passed to the summarizer each run
+
+[scoring.keyword]
+common_weight = 1.0   # Weight applied to global keyword interests
+category_weight = 1.5 # Weight applied to per-category interests
+
+# Sources — add one [[sources.<name>]] block per feed.
+#
+# [[sources.technology]]
+# type       = "rss"                        # "rss" | "telegram"
+# externalId = "https://example.com/rss"    # feed URL or Telegram channel ID
+# category   = "technology"                 # optional, drives category-level scoring
+# [sources.technology.custom]               # optional extra metadata

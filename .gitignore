@@ -1,6 +1,10 @@
 # Temporary runtime files
 .tmp/
 
+# Runtime-generated app files
+config.toml
+state.sqlite
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
