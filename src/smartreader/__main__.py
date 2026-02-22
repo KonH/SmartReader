@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import sys
 
+from ._logging import setup as setup_logging
 from .config.mock import MockConfig
 from .input.mock import MockInput
 from .main import Coordinator
@@ -13,7 +14,7 @@ from .state.mock import MockState
 from .summarize.mock import MockSummarize
 from .ui.mock import MockUI
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+setup_logging()
 
 logger = logging.getLogger(__name__)
 
