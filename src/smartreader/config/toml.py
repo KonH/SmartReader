@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 _CONFIG_PATH = Path("config.toml")
 
 _DEFAULTS: dict = {
+    "common": {
+        "initial_days_scan_interval": 7,
+    },
     "scoring": {
         "top_n": 10,
         "upvote_power": 1.5,

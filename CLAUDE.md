@@ -49,6 +49,7 @@ Ask / Cron ──► Read sources ──► Score (L1) ──► Select Top N �
 - **Level 1 scoring**: Fast keyword pass on raw content — filters bulk before calling OpenAI.
 - **Level 2 scoring**: Refined pass on summarized text for final ranking.
 - **Feedback loop**: User scores update the Interest model (`common_keyword_interests` and `category_interests`), improving future L1 scoring.
+- **Display order**: Content is shown sorted by `published_ts` ascending (oldest first, newest last). Score is only used for Top N selection, not UI ordering.
 
 ## Git
 
@@ -65,6 +66,9 @@ Ask / Cron ──► Read sources ──► Score (L1) ──► Select Top N �
 ## Config Schema (TOML)
 
 ```toml
+[common]
+initial_days_scan_interval = 7  # days to scan back on first run per source
+
 [scoring.keyword]
 common_weight = <float>
 category_weight = <float>
@@ -89,7 +93,7 @@ custom = {}           # optional extra metadata
 ## Module Interfaces
 
 ```
-UI:        initialize(params, cb) | waitTrigger(cb<params>) | showContentList(content[], cb) | receiveScore(id, score) | terminate()
+UI:        initialize(params, cb) | waitTrigger(categories[], cb<params>) | showContentList(content[], cb) | receiveScore(id, score) | terminate()
 Input:     readSources(startTs, type, id, cb)
 Config:    load(params, cb) | readValue(key, cb<dict>) | writeValue(key, cb) | save(cb)
 State:     inherits Config interface

@@ -59,6 +59,8 @@ class Coordinator:
         self._running = False
         self._active_source_ids: list[str] = []
         self._shown_items: list[Content] = []
+        self._trigger_category: str | None = None
+        self._initial_days_interval: int = 7
 
     # ── Initialization ────────────────────────────────────────────────────────
 
@@ -112,7 +114,7 @@ class Coordinator:
         logger.info("coordinator running, waiting for trigger")
         self._running = True
         while self._running:
-            self._ui.wait_trigger(self._on_trigger)
+            self._config.read_value("sources", self._on_sources_for_wait)
 
     def stop(self) -> None:
         """Signal the loop to exit and terminate the UI."""
@@ -122,20 +124,36 @@ class Coordinator:
 
     # ── Trigger → per-source reads ────────────────────────────────────────────
 
+    def _on_sources_for_wait(self, ok: bool, err: str, val: dict) -> None:
+        categories = _extract_categories(val) if ok and isinstance(val, dict) else []
+        self._ui.wait_trigger(categories, self._on_trigger)
+
     def _on_trigger(self, ok: bool, err: str, params: TriggerParams) -> None:
         if not ok:
             logger.error("trigger: %s", err)
             return
-        logger.info("trigger received: mode=%s", params.mode)
+        self._trigger_category = params.category
+        logger.info("trigger received: mode=%s category=%s", params.mode, params.category)
+        self._config.read_value(
+            "common",
+            lambda ok2, err2, val: self._on_common_config(ok2, err2, val),
+        )
+
+    def _on_common_config(self, ok: bool, err: str, val: dict) -> None:
+        if ok and isinstance(val, dict):
+            self._initial_days_interval = int(val.get("initial_days_scan_interval", 7))
         self._config.read_value(
             "sources",
             lambda ok2, err2, val: self._on_sources_config(ok2, err2, val),
         )
 
     def _on_sources_config(self, ok: bool, err: str, val: dict) -> None:
-        source_ids = list(val.keys()) if ok and isinstance(val, dict) else []
-        if not source_ids:
+        if not ok or not isinstance(val, dict):
             logger.info("no sources configured")
+            return
+        source_ids = _filter_by_category(val, self._trigger_category)
+        if not source_ids:
+            logger.info("no sources match category=%s", self._trigger_category)
             return
         self._active_source_ids = source_ids
         self._collect_source_states(source_ids, {})
@@ -157,7 +175,12 @@ class Coordinator:
         self, ok: bool, err: str, val: dict, sid: str,
         remaining: list[str], states: dict[str, float],
     ) -> None:
-        last_ts = float(val.get("lastReadTs", 0.0)) if ok and isinstance(val, dict) else 0.0
+        raw_ts = float(val.get("lastReadTs", 0.0)) if ok and isinstance(val, dict) else 0.0
+        if raw_ts == 0.0:
+            last_ts = time.time() - self._initial_days_interval * 86400
+            logger.info("source %r: first run, scanning last %d day(s)", sid, self._initial_days_interval)
+        else:
+            last_ts = raw_ts
         self._collect_source_states(remaining, {**states, sid: last_ts})
 
     # ── Step 1: read sources ──────────────────────────────────────────────────
@@ -266,7 +289,7 @@ class Coordinator:
     # ── Step 6: show + collect feedback ───────────────────────────────────────
 
     def _show(self, items: list[Content]) -> None:
-        final = sorted(items, key=lambda c: c.score or 0.0, reverse=True)
+        final = sorted(items, key=lambda c: c.published_ts)
         self._shown_items = final
         logger.info("showing %d item(s) to ui", len(final))
         self._ui.show_content_list(final, self._on_shown)
@@ -321,3 +344,29 @@ class Coordinator:
             self._process_feedback(feedback, items, idx + 1)
 
         self._scoring.update_score(content, upvote, on_updated)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _extract_categories(sources_val: dict) -> list[str]:
+    """Return sorted list of unique non-empty categories from sources config."""
+    cats: set[str] = set()
+    for entries in sources_val.values():
+        for entry in (entries if isinstance(entries, list) else [entries]):
+            cat = entry.get("category") if isinstance(entry, dict) else None
+            if cat:
+                cats.add(cat)
+    return sorted(cats)
+
+
+def _filter_by_category(sources_val: dict, category: str | None) -> list[str]:
+    """Return source IDs that have at least one entry matching category (None = ALL)."""
+    if category is None:
+        return list(sources_val.keys())
+    result: list[str] = []
+    for sid, entries in sources_val.items():
+        for entry in (entries if isinstance(entries, list) else [entries]):
+            if isinstance(entry, dict) and entry.get("category") == category:
+                result.append(sid)
+                break
+    return result

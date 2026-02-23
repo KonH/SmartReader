@@ -9,7 +9,8 @@ class UIParams:
 @dataclass
 class TriggerParams:
     """Payload delivered by UI.wait_trigger when a run is initiated."""
-    mode: str   # "ask" | "cron"
+    mode: str               # "ask" | "cron"
+    category: str | None = None  # None means ALL categories
 
 
 @dataclass

@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 from rich import box
 from rich.console import Console
@@ -21,12 +22,30 @@ class TerminalUI(UI):
         self._console.print(Panel.fit("[bold cyan]SmartReader[/bold cyan]", border_style="cyan"))
         callback(True, "")
 
-    def wait_trigger(self, callback: TriggerCallback) -> None:
-        try:
-            self._console.input("\n[bold]Press Enter to run[/bold] [dim](Ctrl+C to quit)[/dim]")
-        except EOFError:
-            return
-        callback(True, "", TriggerParams(mode="ask"))
+    def wait_trigger(self, categories: list[str], callback: TriggerCallback) -> None:
+        category: str | None = None
+        if categories:
+            options = ["ALL"] + categories
+            self._console.print("\n[bold]Categories:[/bold]")
+            for i, cat in enumerate(options):
+                hint = " [dim](default)[/dim]" if i == 0 else ""
+                self._console.print(f"  [dim]{i}.[/dim] {cat}{hint}")
+            try:
+                raw = self._console.input(
+                    "[bold]Select category, then Enter to run[/bold] [dim](Ctrl+C to quit)[/dim]: "
+                ).strip()
+            except EOFError:
+                return
+            if raw.isdigit():
+                idx = int(raw)
+                if 1 <= idx < len(options):
+                    category = options[idx]
+        else:
+            try:
+                self._console.input("\n[bold]Press Enter to run[/bold] [dim](Ctrl+C to quit)[/dim]")
+            except EOFError:
+                return
+        callback(True, "", TriggerParams(mode="ask", category=category))
 
     def show_content_list(self, content: list[Content], callback: FeedbackListCallback) -> None:
         if not content:
@@ -42,6 +61,7 @@ class TerminalUI(UI):
             expand=True,
         )
         table.add_column("#", style="dim", justify="right", width=3)
+        table.add_column("Date", width=12)
         table.add_column("Score", justify="right", width=6)
         table.add_column("Title", ratio=2, no_wrap=False)
         table.add_column("Source", width=18)
@@ -49,9 +69,10 @@ class TerminalUI(UI):
 
         for i, item in enumerate(content, 1):
             score_str = f"{item.score:.2f}" if item.score is not None else "—"
+            date_str = datetime.fromtimestamp(item.published_ts).strftime("%b %d %H:%M")
             text = item.summary or item.body
             summary_str = text[:200].rstrip() + "…" if len(text) > 200 else text
-            table.add_row(str(i), score_str, item.title, item.source_id, summary_str)
+            table.add_row(str(i), date_str, score_str, item.title, item.source_id, summary_str)
 
         self._console.print(table)
 
