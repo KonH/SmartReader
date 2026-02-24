@@ -17,4 +17,14 @@ fi
 
 source "$VENV/bin/activate"
 
+# Load secrets from .env if present (copy .env.example → .env and fill in values).
+# Variables already set in the shell environment take precedence.
+ENV_FILE="$SCRIPT_DIR/.env"
+if [[ -f "$ENV_FILE" ]]; then
+    # shellcheck source=/dev/null
+    set -a
+    source "$ENV_FILE"
+    set +a
+fi
+
 PYTHONPATH="$SCRIPT_DIR/src" exec python -m smartreader "$@"

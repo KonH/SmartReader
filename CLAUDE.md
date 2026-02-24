@@ -69,6 +69,9 @@ Ask / Cron ──► Read sources ──► Score (L1) ──► Select Top N �
 [common]
 initial_days_scan_interval = 7  # days to scan back on first run per source
 
+[telegram]
+active = false        # set true to enable Telegram channel sources
+
 [scoring.keyword]
 common_weight = <float>
 category_weight = <float>
@@ -94,13 +97,18 @@ custom = {}           # optional extra metadata
 
 ```
 UI:        initialize(params, cb) | waitTrigger(categories[], cb<params>) | showContentList(content[], cb) | receiveScore(id, score) | terminate()
-Input:     readSources(startTs, type, id, cb)
+Input:     initialize(secrets, config, cb) | readSources(startTs, type, id, cb)
 Config:    load(params, cb) | readValue(key, cb<dict>) | writeValue(key, cb) | save(cb)
 State:     inherits Config interface
 Scoring:   initialize(cb) | score(content, effortLevel, cb<score>)
 Summarize: initialize(cb) | summarize(content, cb<content>)
 Secrets:   initialize(params, cb) | readValue(key, cb<string>)
 ```
+
+- **Coordinator init order**: `secrets → config → state → scoring → summarize → ui → input`. Input init runs last so it has access to loaded secrets and config.
+- **Input.initialize**: optional hook (default no-op). `SourceReader` delegates to any registered reader that implements it. Returning `success=False` aborts the app.
+- **lastReadTs invariant**: only sources whose `read_sources` call succeeded get their `lastReadTs` updated. Failed reads are skipped with a warning and will be retried next run.
+- **Feature gating pattern**: optional integrations are enabled via a top-level TOML section, e.g. `[telegram] active = true`. The implementation checks this flag in its `initialize` and skips setup when inactive.
 
 ## Reference Docs
 

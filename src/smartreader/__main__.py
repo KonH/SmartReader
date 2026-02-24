@@ -8,10 +8,11 @@ from ._logging import setup as setup_logging
 from .config.toml import TOMLConfig
 from .input.rss import RSSReader
 from .input.source_reader import SourceReader
+from .input.telegram import TelegramReader
 from .main import Coordinator
 from .scoring.adapter import ScoringAdapter
 from .scoring.keyword import L1KeywordScoring, L2KeywordScoring
-from .secrets.mock import MockSecrets
+from .secrets.env import EnvSecrets
 from .state.sqlite import SQLiteState
 from .summarize.mock import MockSummarize
 from .ui.terminal import TerminalUI
@@ -30,7 +31,13 @@ def main() -> None:
 
     coordinator = Coordinator(
         ui=TerminalUI(),
-        input=SourceReader(config=config, readers={"rss": RSSReader()}),
+        input=SourceReader(
+            config=config,
+            readers={
+                "rss": RSSReader(),
+                "telegram": TelegramReader(),
+            },
+        ),
         config=config,
         state=state,
         scoring=ScoringAdapter(
@@ -38,7 +45,7 @@ def main() -> None:
             l2=L2KeywordScoring(state, config, shared_common, shared_category),
         ),
         summarize=MockSummarize(),
-        secrets=MockSecrets(),
+        secrets=EnvSecrets(),
     )
 
     def on_init(ok: bool, err: str) -> None:

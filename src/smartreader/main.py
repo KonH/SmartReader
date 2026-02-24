@@ -58,6 +58,7 @@ class Coordinator:
         self._secrets = secrets
         self._running = False
         self._active_source_ids: list[str] = []
+        self._successful_source_ids: list[str] = []
         self._shown_items: list[Content] = []
         self._trigger_category: str | None = None
         self._initial_days_interval: int = 7
@@ -105,7 +106,14 @@ class Coordinator:
             callback(False, f"summarize: {err}")
             return
         logger.info("initializing ui")
-        self._ui.initialize(UIParams(), callback)
+        self._ui.initialize(UIParams(), lambda ok2, err2: self._init_input(ok2, err2, callback))
+
+    def _init_input(self, ok: bool, err: str, callback: Callback) -> None:
+        if not ok:
+            callback(False, f"ui: {err}")
+            return
+        logger.info("initializing input")
+        self._input.initialize(self._secrets, self._config, callback)
 
     # ── Main loop ─────────────────────────────────────────────────────────────
 
@@ -156,6 +164,7 @@ class Coordinator:
             logger.info("no sources match category=%s", self._trigger_category)
             return
         self._active_source_ids = source_ids
+        self._successful_source_ids = []
         self._collect_source_states(source_ids, {})
 
     def _collect_source_states(self, remaining: list[str], states: dict[str, float]) -> None:
@@ -203,8 +212,10 @@ class Coordinator:
         self, ok: bool, err: str, items: list[Content],
         sid: str, remaining: list[tuple[str, float]], all_items: list[Content],
     ) -> None:
-        if not ok:
-            logger.warning("source %r read failed: %s", sid, err)
+        if ok:
+            self._successful_source_ids.append(sid)
+        else:
+            logger.warning("source %r read failed (lastReadTs will not be updated): %s", sid, err)
         self._gather_source_content(remaining, all_items + (items if ok else []))
 
     def _on_sources_read(self, ok: bool, err: str, items: list[Content]) -> None:
@@ -300,7 +311,7 @@ class Coordinator:
             return
         logger.info("pipeline complete, updating per-source state")
         now = time.time()
-        self._update_source_states(list(self._active_source_ids), now)
+        self._update_source_states(list(self._successful_source_ids), now)
         if feedback:
             logger.info("processing %d feedback item(s)", len(feedback))
             self._process_feedback(feedback, self._shown_items, 0)

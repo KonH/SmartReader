@@ -2,8 +2,9 @@ import logging
 from dataclasses import dataclass
 from typing import Protocol
 
-from .._types import ContentListCallback
+from .._types import Callback, ContentListCallback
 from ..config import Config
+from ..secrets import Secrets
 from ..types.content import Content
 from . import Input
 
@@ -29,6 +30,34 @@ class SourceReader(Input):
     def __init__(self, config: Config, readers: dict[str, TypeReader]) -> None:
         self._config = config
         self._readers = readers
+
+    def initialize(self, secrets: Secrets, config: Config, callback: Callback) -> None:
+        """Initialize all registered readers that expose their own initialize method."""
+        readers_with_init = [
+            r for r in self._readers.values()
+            if hasattr(r, "initialize") and callable(getattr(r, "initialize"))
+        ]
+        self._init_readers(readers_with_init, secrets, config, callback)
+
+    def _init_readers(
+        self,
+        remaining: list[TypeReader],
+        secrets: Secrets,
+        config: Config,
+        callback: Callback,
+    ) -> None:
+        if not remaining:
+            callback(True, "")
+            return
+        reader, *rest = remaining
+
+        def on_done(ok: bool, err: str) -> None:
+            if not ok:
+                callback(False, err)
+            else:
+                self._init_readers(rest, secrets, config, callback)
+
+        reader.initialize(secrets, config, on_done)  # type: ignore[union-attr]
 
     def read_sources(
         self, start_ts: float, type: str, id: str, callback: ContentListCallback

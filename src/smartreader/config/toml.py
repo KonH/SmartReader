@@ -17,6 +17,11 @@ _DEFAULTS: dict = {
     "common": {
         "initial_days_scan_interval": 7,
     },
+    "telegram": {
+        "active": False,
+        "read_source_min_interval": 1000,
+        "read_source_max_interval": 3000,
+    },
     "scoring": {
         "top_n": 10,
         "upvote_power": 1.5,

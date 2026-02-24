@@ -8,10 +8,29 @@ top_n = 10            # Number of top-scoring articles passed to the summarizer 
 common_weight = 1.0   # Weight applied to global keyword interests
 category_weight = 1.5 # Weight applied to per-category interests
 
+# ── Telegram user API (optional) ──────────────────────────────────────────────
+# Set active = true to enable Telegram channel sources.
+# Credentials are loaded from environment variables (see .env.example):
+#   TELEGRAM_API_ID   – integer, from https://my.telegram.org/apps
+#   TELEGRAM_API_HASH – string,  from https://my.telegram.org/apps
+#   TELEGRAM_SESSION  – optional StringSession export for non-interactive auth
+#
+# [telegram]
+# active = false
+# read_source_min_interval = 1000   # ms – minimum pause between channel reads
+# read_source_max_interval = 3000   # ms – maximum pause (actual delay is random in [min, max])
+
 # Sources — add one [[sources.<name>]] block per feed.
 #
+# RSS example:
 # [[sources.technology]]
 # type       = "rss"                        # "rss" | "telegram"
-# externalId = "https://example.com/rss"    # feed URL or Telegram channel ID
+# externalId = "https://example.com/rss"    # feed URL
 # category   = "technology"                 # optional, drives category-level scoring
 # [sources.technology.custom]               # optional extra metadata
+#
+# Telegram example (requires [telegram] active = true):
+# [[sources.my_channel]]
+# type       = "telegram"
+# externalId = "@channelname"               # public username, -100… channel ID, or t.me link
+# category   = "technology"                 # optional
