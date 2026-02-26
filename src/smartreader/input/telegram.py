@@ -12,6 +12,7 @@ Optional secrets:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import random
 import time
@@ -120,7 +121,9 @@ class TelegramReader:
         self._client = TelegramClient(session, api_id, api_hash, loop=self._loop)
 
         try:
-            self._loop.run_until_complete(self._client.start())  # type: ignore[union-attr]
+            result = self._client.start()  # type: ignore[union-attr]
+            if inspect.isawaitable(result):
+                self._loop.run_until_complete(result)
         except Exception as exc:
             callback(False, f"telegram: login failed: {exc}")
             return
