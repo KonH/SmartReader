@@ -8,6 +8,31 @@ top_n = 10            # Number of top-scoring articles passed to the summarizer 
 common_weight = 1.0   # Weight applied to global keyword interests
 category_weight = 1.5 # Weight applied to per-category interests
 
+# ── Summarizer ────────────────────────────────────────────────────────────────
+# [summarize.trim] trims the summary produced by the active Summarize implementation.
+# Useful to keep Telegram messages or terminal output concise.
+#
+# [summarize.trim]
+# active = false
+# lines  = 10     # max lines to keep from the summary
+# chars  = 500    # optional: max total characters (omit = no limit)
+
+# ── Telegram Bot UI (optional) ────────────────────────────────────────────────
+# Set active = true to receive content via a Telegram bot instead of the terminal.
+# Credentials are loaded from environment variables (see .env.example):
+#   TELEGRAM_BOT_TOKEN – bot token from @BotFather
+#   TELEGRAM_API_ID    – integer, from https://my.telegram.org/apps
+#   TELEGRAM_API_HASH  – string,  from https://my.telegram.org/apps
+#
+# WARNING: controller_usernames restricts who can trigger runs.
+# An empty list allows ANY Telegram user to start the pipeline!
+#
+# [telegram_ui]
+# active = false
+# controller_usernames = ["yourusername"]   # without @
+# upvote_reaction   = "👍"
+# downvote_reaction = "👎"
+
 # ── Telegram user API (optional) ──────────────────────────────────────────────
 # Set active = true to enable Telegram channel sources.
 # Credentials are loaded from environment variables (see .env.example):

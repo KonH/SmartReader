@@ -15,3 +15,6 @@ ContentListCallback   = Callable[[bool, str, list[Content]], None]
 TriggerCallback       = Callable[[bool, str, TriggerParams], None]
 StateValueCallback    = Callable[[bool, str, StateValue], None]
 FeedbackListCallback  = Callable[[bool, str, list[tuple[str, bool]]], None]
+
+# Called from TelegramUI when an inline vote button is pressed
+LiveFeedbackHandler = Callable[[Content, bool], None]

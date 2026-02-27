@@ -69,8 +69,20 @@ Ask / Cron ──► Read sources ──► Score (L1) ──► Select Top N �
 [common]
 initial_days_scan_interval = 7  # days to scan back on first run per source
 
+[telegram_ui]
+active = false                  # set true to enable Telegram Bot UI
+controller_usernames = []       # Telegram usernames allowed to trigger runs (no @).
+                                # WARNING: empty list = any Telegram user can trigger!
+upvote_reaction = "👍"
+downvote_reaction = "👎"
+
 [telegram]
-active = false        # set true to enable Telegram channel sources
+active = false        # set true to enable Telegram channel sources (input)
+
+[summarize.trim]
+active = false        # set true to trim summaries after summarization
+lines = 10            # max lines to keep
+# chars = 500         # optional: max total chars (omit = no limit)
 
 [scoring.keyword]
 common_weight = <float>
@@ -83,6 +95,14 @@ externalId = "..."    # feed URL or channel ID
 category = "..."      # optional, used for category-level interest scoring
 custom = {}           # optional extra metadata
 ```
+
+Secrets for Telegram Bot UI (environment variables):
+
+| Variable | Purpose |
+|----------|---------|
+| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
+| `TELEGRAM_API_ID` | MTProto API id (shared with telegram input if both active) |
+| `TELEGRAM_API_HASH` | MTProto API hash (shared with telegram input if both active) |
 
 ## State Keys (SQLite)
 
@@ -109,6 +129,10 @@ Secrets:   initialize(params, cb) | readValue(key, cb<string>)
 - **Input.initialize**: optional hook (default no-op). `SourceReader` delegates to any registered reader that implements it. Returning `success=False` aborts the app.
 - **lastReadTs invariant**: only sources whose `read_sources` call succeeded get their `lastReadTs` updated. Failed reads are skipped with a warning and will be retried next run.
 - **Feature gating pattern**: optional integrations are enabled via a top-level TOML section, e.g. `[telegram] active = true`. The implementation checks this flag in its `initialize` and skips setup when inactive.
+- **TOML `None` is not serializable**: `tomli_w` cannot write `None` values. Omit optional keys from `_DEFAULTS` entirely instead of setting them to `None`; callers use `.get(key)` which returns `None` for absent keys.
+- **Decorator pattern for Summarize**: post-processing (e.g. trimming) is added by wrapping an inner `Summarize` impl, not by modifying the UI. `TrimSummarize(inner, config)` is the established example.
+- **`UIParams.live_feedback`**: optional `LiveFeedbackHandler` passed to `UI.initialize`; used by non-blocking UIs (e.g. `TelegramUI`) to push async vote feedback directly to the coordinator without waiting for `show_content_list` to return.
+- **`config.schema.toml`**: user-facing reference file in the project root — update it alongside CLAUDE.md whenever config sections are added or changed. Also update `.env.example` whenever new secrets are introduced.
 
 ## Reference Docs
 

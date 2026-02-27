@@ -1,9 +1,16 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .._types import LiveFeedbackHandler
 
 
 @dataclass
 class UIParams:
     """Initialization parameters for a UI implementation."""
+    live_feedback: LiveFeedbackHandler | None = field(default=None)
 
 
 @dataclass

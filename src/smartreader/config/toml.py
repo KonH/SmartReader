@@ -17,6 +17,19 @@ _DEFAULTS: dict = {
     "common": {
         "initial_days_scan_interval": 7,
     },
+    "telegram_ui": {
+        "active": False,
+        "controller_usernames": [],
+        "upvote_reaction": "👍",
+        "downvote_reaction": "👎",
+    },
+    "summarize": {
+        "trim": {
+            "active": False,
+            "lines": 10,
+            # chars omitted — absent means no char limit (TOML has no null)
+        },
+    },
     "telegram": {
         "active": False,
         "read_source_min_interval": 1000,

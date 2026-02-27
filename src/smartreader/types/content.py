@@ -12,3 +12,4 @@ class Content:
     summary: str | None = None
     score: float | None = None
     category: str | None = None
+    url: str | None = None

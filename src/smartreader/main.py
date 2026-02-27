@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import time
 
-from ._types import Callback
+from ._types import Callback, LiveFeedbackHandler
 from .config import Config
 from .input import Input
 from .scoring import Scoring
@@ -101,12 +101,19 @@ class Coordinator:
         logger.info("initializing summarize")
         self._summarize.initialize(lambda ok2, err2: self._init_ui(ok2, err2, callback))
 
+    def _live_feedback(self, content: Content, upvote: bool) -> None:
+        """Handle asynchronous inline vote from TelegramUI."""
+        logger.info("live feedback for %r: upvote=%s", content.id, upvote)
+        self._scoring.update_score(content, upvote, lambda ok, err: (
+            logger.error("live feedback update_score error for %s: %s", content.id, err) if not ok else None
+        ))
+
     def _init_ui(self, ok: bool, err: str, callback: Callback) -> None:
         if not ok:
             callback(False, f"summarize: {err}")
             return
         logger.info("initializing ui")
-        self._ui.initialize(UIParams(), lambda ok2, err2: self._init_input(ok2, err2, callback))
+        self._ui.initialize(UIParams(live_feedback=self._live_feedback), lambda ok2, err2: self._init_input(ok2, err2, callback))
 
     def _init_input(self, ok: bool, err: str, callback: Callback) -> None:
         if not ok:

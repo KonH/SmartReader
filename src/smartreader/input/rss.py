@@ -33,6 +33,7 @@ class RSSReader:
                 source_type="rss",
                 published_ts=published_ts,
                 category=source.category,
+                url=entry.get("link"),
             ))
 
         logger.info("rss %r: %d new item(s) since ts=%.0f", source.external_id, len(items), start_ts)

@@ -30,7 +30,7 @@ class SQLiteState(State):
 
     def load(self, params: ConfigParams, callback: Callback) -> None:
         try:
-            self._conn = sqlite3.connect(str(self._path))
+            self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
             self._conn.execute(
                 f"CREATE TABLE IF NOT EXISTS {_TABLE} "
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"

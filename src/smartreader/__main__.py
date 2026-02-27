@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import tomllib
 
 from ._logging import setup as setup_logging
 from .config.toml import TOMLConfig
@@ -15,11 +16,27 @@ from .scoring.keyword import L1KeywordScoring, L2KeywordScoring
 from .secrets.env import EnvSecrets
 from .state.sqlite import SQLiteState
 from .summarize.mock import MockSummarize
+from .summarize.trim import TrimSummarize
+from .ui import UI
+from .ui.telegram import TelegramUI
 from .ui.terminal import TerminalUI
 
 setup_logging()
 
 logger = logging.getLogger(__name__)
+
+
+def _pick_ui() -> UI:
+    """Read config.toml early to decide which UI to instantiate."""
+    try:
+        with open("config.toml", "rb") as f:
+            cfg = tomllib.load(f)
+    except (FileNotFoundError, Exception):
+        cfg = {}
+    if cfg.get("telegram_ui", {}).get("active"):
+        logger.info("using TelegramUI")
+        return TelegramUI()
+    return TerminalUI()
 
 
 def main() -> None:
@@ -30,7 +47,7 @@ def main() -> None:
     shared_category: dict[str, dict[str, float]] = {}
 
     coordinator = Coordinator(
-        ui=TerminalUI(),
+        ui=_pick_ui(),
         input=SourceReader(
             config=config,
             readers={
@@ -44,7 +61,7 @@ def main() -> None:
             l1=L1KeywordScoring(state, config, shared_common, shared_category),
             l2=L2KeywordScoring(state, config, shared_common, shared_category),
         ),
-        summarize=MockSummarize(),
+        summarize=TrimSummarize(MockSummarize(), config),
         secrets=EnvSecrets(),
     )
 
