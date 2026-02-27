@@ -184,12 +184,26 @@ class TelegramReader:
                 source_type="telegram",
                 published_ts=pub_ts,
                 category=source.category,
+                url=_post_url(source.external_id, message.id),
             ))
 
         return items
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _post_url(external_id: str, message_id: int) -> str | None:
+    """Return a t.me link for public channels; None for numeric-only IDs."""
+    name = external_id.lstrip("@")
+    # t.me/username/message_id only works for public usernames, not raw channel IDs
+    if name.lstrip("-").isdigit():
+        return None
+    # Strip t.me/ prefix if the externalId was supplied as a full link
+    if name.startswith("t.me/"):
+        name = name[5:]
+    name = name.split("/")[0]  # drop any trailing path
+    return f"https://t.me/{name}/{message_id}"
+
 
 def _read_secret(secrets: Secrets, key: str) -> str | None:
     """Call secrets.read_value synchronously; return value or None on failure."""

@@ -52,6 +52,7 @@ class TelegramUI(UI):
         self._trigger_queue: queue.Queue[dict] = queue.Queue()
         self._category_queue: queue.Queue[dict] = queue.Queue()
         self._content_by_id: dict[str, Content] = {}
+        self._msg_loc_by_content_id: dict[str, tuple[int, int]] = {}  # content_id → (chat_id, msg_id)
         self._live_feedback_handler: LiveFeedbackHandler | None = None
         self._client: object | None = None  # telethon.TelegramClient
 
@@ -113,6 +114,7 @@ class TelegramUI(UI):
             return
 
         self._content_by_id = {c.id: c for c in content}
+        self._msg_loc_by_content_id = {}
         sender_id = self._current_sender_id
 
         if not content:
@@ -132,7 +134,9 @@ class TelegramUI(UI):
                 ]
             ]
             if sender_id is not None:
-                self._run_async(self._async_send_buttons(sender_id, msg_text, buttons))
+                msg_id = self._run_async(self._async_send_buttons(sender_id, msg_text, buttons))
+                if isinstance(msg_id, int):
+                    self._msg_loc_by_content_id[item.id] = (sender_id, msg_id)
 
         # Non-blocking: return immediately, feedback arrives via live_feedback_handler
         callback(True, "", [])
@@ -200,6 +204,7 @@ class TelegramUI(UI):
 
         try:
             from telethon import TelegramClient, events  # type: ignore[import-untyped]
+            from telethon.tl.custom import Button  # type: ignore[import-untyped]
         except ImportError:
             callback(False, "telegram_ui: telethon is not installed (pip install telethon)")
             return
@@ -233,6 +238,19 @@ class TelegramUI(UI):
                     content = self._content_by_id.get(content_id)
                     if content and self._live_feedback_handler:
                         self._live_feedback_handler(content, action == "up")
+                    loc = self._msg_loc_by_content_id.get(content_id)
+                    if loc is not None:
+                        chat_id, msg_id = loc
+                        upvoted = action == "up"
+                        up_label = f"{self._upvote_text} ✓" if upvoted else self._upvote_text
+                        down_label = f"{self._downvote_text} ✓" if not upvoted else self._downvote_text
+                        new_buttons = [
+                            [
+                                Button.inline(up_label, f"vote:up:{content_id}".encode()),
+                                Button.inline(down_label, f"vote:down:{content_id}".encode()),
+                            ]
+                        ]
+                        await client.edit_message(chat_id, msg_id, buttons=new_buttons)  # type: ignore[union-attr]
                 await event.answer()  # type: ignore[attr-defined]
 
         # Start background event loop thread
@@ -266,14 +284,15 @@ class TelegramUI(UI):
         options = [("ALL", "cat:")] + [(cat, f"cat:{cat}") for cat in categories]
         self._run_async(self._async_send_category_buttons(sender_id, options))
 
-    def _run_async(self, coro: object) -> None:
-        """Schedule a coroutine on the background loop and wait for result."""
+    def _run_async(self, coro: object) -> object | None:
+        """Schedule a coroutine on the background loop, wait for result, and return it."""
         import asyncio as _asyncio
         future = _asyncio.run_coroutine_threadsafe(coro, self._loop)  # type: ignore[arg-type]
         try:
-            future.result(timeout=30)
+            return future.result(timeout=30)
         except Exception as exc:
             logger.warning("telegram_ui: async send error: %s", exc)
+            return None
 
     async def _async_start_bot(self, token: str) -> None:
         import inspect
@@ -297,7 +316,7 @@ class TelegramUI(UI):
 
     async def _async_send_buttons(
         self, chat_id: int, text: str, buttons_spec: list[list[tuple[str, str, str]]]
-    ) -> None:
+    ) -> int:
         from telethon import TelegramClient  # type: ignore[import-untyped]
         from telethon.tl.custom import Button  # type: ignore[import-untyped]
         client: TelegramClient = self._client  # type: ignore[assignment]
@@ -305,9 +324,10 @@ class TelegramUI(UI):
             [Button.inline(label, data.encode()) for _kind, label, data in row]
             for row in buttons_spec
         ]
-        await client.send_message(
+        msg = await client.send_message(
             chat_id, text, buttons=buttons, link_preview=False, parse_mode="md"
         )
+        return msg.id
 
     async def _async_disconnect(self) -> None:
         from telethon import TelegramClient  # type: ignore[import-untyped]
