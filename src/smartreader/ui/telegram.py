@@ -124,7 +124,7 @@ class TelegramUI(UI):
         for item in content:
             text = item.summary or item.body
             title_part = f"[{_escape_md(item.title)}]({item.url})" if item.url else _escape_md(item.title)
-            msg_text = f"{title_part}\n\n{text}"
+            msg_text = f"`[{item.source_id}]` {title_part}\n\n{text}"
             buttons = [
                 [
                     ("inline", self._upvote_text, f"vote:up:{item.id}"),
@@ -292,7 +292,7 @@ class TelegramUI(UI):
         from telethon import TelegramClient  # type: ignore[import-untyped]
         from telethon.tl.custom import Button  # type: ignore[import-untyped]
         client: TelegramClient = self._client  # type: ignore[assignment]
-        buttons = [[Button.inline(label, data.encode()) for label, data in options]]
+        buttons = [[Button.inline(label, data.encode())] for label, data in options]
         await client.send_message(chat_id, "Select a category:", buttons=buttons)
 
     async def _async_send_buttons(
