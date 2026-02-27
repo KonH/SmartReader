@@ -233,26 +233,21 @@ class Coordinator:
             logger.info("no new content")
             return
         logger.info("read %d item(s), starting L1 scoring", len(items))
-        self._score_l1(items, [])
+        self._score_l1(items)
 
     # ── Step 2: L1 scoring ────────────────────────────────────────────────────
 
-    def _score_l1(self, remaining: list[Content], scored: list[Content]) -> None:
-        if not remaining:
-            logger.info("L1 scoring done: %d item(s) scored", len(scored))
-            self._select_top_n(scored)
-            return
-        item, *rest = remaining
-
-        def on_score(ok: bool, err: str, score: float) -> None:
-            if ok:
-                item.score = score
-                logger.info("L1 scored %r: %.3f", item.id, score)
-            else:
-                logger.warning("l1 score error for %s: %s", item.id, err)
-            self._score_l1(rest, scored + [item])
-
-        self._scoring.score(item, _EFFORT_L1, on_score)
+    def _score_l1(self, items: list[Content]) -> None:
+        for item in items:
+            def on_score(ok: bool, err: str, score: float, _item: Content = item) -> None:
+                if ok:
+                    _item.score = score
+                    logger.info("L1 scored %r: %.3f", _item.id, score)
+                else:
+                    logger.warning("l1 score error for %s: %s", _item.id, err)
+            self._scoring.score(item, _EFFORT_L1, on_score)
+        logger.info("L1 scoring done: %d item(s) scored", len(items))
+        self._select_top_n(items)
 
     # ── Step 3: select top N ──────────────────────────────────────────────────
 
