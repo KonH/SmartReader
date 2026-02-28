@@ -10,7 +10,9 @@ from .input import Input
 from .scoring import Scoring
 from .secrets import Secrets
 from .state import State
+from .state.app_state import AppState
 from .summarize import Summarize
+from .types.app_state import AppStateData
 from .types.content import Content
 from .types.params import ConfigParams, NewSourceParams, SecretsParams, TriggerParams, UIParams
 from .ui import UI
@@ -48,6 +50,7 @@ class Coordinator:
         scoring: Scoring,
         summarize: Summarize,
         secrets: Secrets,
+        app_state: AppState,
     ) -> None:
         self._ui = ui
         self._input = input
@@ -56,6 +59,7 @@ class Coordinator:
         self._scoring = scoring
         self._summarize = summarize
         self._secrets = secrets
+        self._app_state = app_state
         self._running = False
         self._active_source_ids: list[str] = []
         self._successful_source_ids: list[str] = []
@@ -155,6 +159,8 @@ class Coordinator:
             self._handle_show_logs()
         elif params.mode == "state":
             self._handle_show_state()
+        elif params.mode == "skip" and params.skip_word:
+            self._handle_add_skip_word(params.skip_word)
         else:
             self._config.read_value(
                 "common",
@@ -199,11 +205,37 @@ class Coordinator:
         sys.exit(0)
 
     def _handle_show_state(self) -> None:
-        self._state.read_all(
+        self._app_state.read_all_typed(
             lambda ok, err, data: self._ui.show_state(
-                data if ok else {},
+                data if ok else AppStateData([], {}, {}),
                 lambda ok2, err2: None,
             )
+        )
+
+    def _handle_add_skip_word(self, word: str) -> None:
+        self._config.read_value(
+            "scoring",
+            lambda ok, err, val: self._on_scoring_for_skip(ok, err, val, word),
+        )
+
+    def _on_scoring_for_skip(self, ok: bool, err: str, val: dict, word: str) -> None:
+        scoring: dict = val if isinstance(val, dict) else {}
+        kw: dict = scoring.setdefault("keyword", {})
+        skip_list: list = list(kw.get("skip", []))
+        if word not in skip_list:
+            skip_list.append(word)
+        kw["skip"] = skip_list
+        self._config.write_value(
+            "scoring", scoring,
+            lambda ok2, err2: self._on_skip_config_written(ok2, err2, word),
+        )
+
+    def _on_skip_config_written(self, ok: bool, err: str, word: str) -> None:
+        if not ok:
+            logger.error("skip: write_value error: %s", err)
+        self._app_state.remove_keyword(
+            word,
+            lambda ok2, err2: self._save_and_restart(ok2, err2),
         )
 
     def _handle_show_logs(self) -> None:

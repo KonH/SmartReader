@@ -16,8 +16,9 @@ class UIParams:
 @dataclass
 class TriggerParams:
     """Payload delivered by UI.wait_trigger when a run is initiated."""
-    mode: str               # "ask" | "add" | "logs" | "state"
+    mode: str               # "ask" | "add" | "logs" | "state" | "skip"
     category: str | None = None  # None means ALL categories
+    skip_word: str | None = None  # set when mode == "skip"
 
 
 @dataclass

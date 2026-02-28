@@ -7,9 +7,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .._types import Callback, FeedbackListCallback, NewSourceCallback, TriggerCallback
+from ..types.app_state import AppStateData
 from ..types.content import Content
 from ..types.params import NewSourceParams, TriggerParams, UIParams
-from ..types.values import StateValue
 from . import UI
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,8 @@ class TerminalUI(UI):
         try:
             cmd = self._console.input(
                 "\n[bold]Press Enter to run[/bold], "
-                "[dim]'add' to add a source, 'logs' to view logs, 'state' to view state[/dim] "
+                "[dim]'add' to add a source, 'logs' to view logs, 'state' to view state, "
+                "'skip' to add skip word[/dim] "
                 "[dim](Ctrl+C to quit)[/dim]: "
             ).strip().lower()
         except EOFError:
@@ -41,6 +42,14 @@ class TerminalUI(UI):
             return
         if cmd == "state":
             callback(True, "", TriggerParams(mode="state", category=None))
+            return
+        if cmd == "skip":
+            try:
+                word = self._console.input("Word to skip: ").strip().lower()
+            except EOFError:
+                return
+            if word:
+                callback(True, "", TriggerParams(mode="skip", skip_word=word))
             return
 
         category: str | None = None
@@ -108,14 +117,36 @@ class TerminalUI(UI):
             self._console.print(line)
         callback(True, "")
 
-    def show_state(self, data: dict[str, StateValue], callback: Callback) -> None:
-        import json
-        if not data:
-            self._console.print("[dim]State is empty.[/dim]")
+    def show_state(self, data: AppStateData, callback: Callback) -> None:
+        # Sources section
+        self._console.print(f"\n[bold]Sources ({len(data.source_states)}):[/bold]")
+        if data.source_states:
+            for entry in data.source_states:
+                status = "active" if entry.active else "inactive"
+                if entry.last_read_ts:
+                    ts_str = datetime.fromtimestamp(entry.last_read_ts).strftime("%b %d, %Y %H:%M")
+                else:
+                    ts_str = "never"
+                self._console.print(f"  [{entry.source_id}]  {status}     last_read: {ts_str}")
         else:
-            for key in sorted(data):
-                self._console.print(f"\n[bold cyan]{key}[/bold cyan]")
-                self._console.print(json.dumps(data[key], indent=2, ensure_ascii=False))
+            self._console.print("  [dim]No sources tracked yet.[/dim]")
+
+        # Common interests section
+        n_common = len(data.common_interests)
+        self._console.print(f"\n[bold]Common interests ({n_common} keywords):[/bold]")
+        if data.common_interests:
+            for k, v in data.common_interests.items():
+                self._console.print(f"  - {k}: {v:.1f}")
+        else:
+            self._console.print("  [dim]No interests yet.[/dim]")
+
+        # Category interests
+        if data.category_interests:
+            for cat, keywords in data.category_interests.items():
+                self._console.print(f"\n[bold]Category: {cat} ({len(keywords)} keywords)[/bold]")
+                for k, v in keywords.items():
+                    self._console.print(f"  - {k}: {v:.1f}")
+
         callback(True, "")
 
     def show_content_list(self, content: list[Content], callback: FeedbackListCallback) -> None:

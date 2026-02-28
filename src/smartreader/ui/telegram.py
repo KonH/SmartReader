@@ -27,9 +27,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .._types import Callback, FeedbackListCallback, LiveFeedbackHandler, NewSourceCallback, TriggerCallback
+from ..types.app_state import AppStateData
 from ..types.content import Content
 from ..types.params import NewSourceParams, TriggerParams, UIParams
-from ..types.values import StateValue
 from . import UI
 
 import tomli_w
@@ -70,6 +70,7 @@ class TelegramUI(UI):
         # Config fields (set during initialize)
         self._active = False
         self._in_add_mode = False
+        self._in_skip_mode = False
         self._waiting_for_category = False
         self._controller_usernames: list[str] = []
         self._upvote_text: str = "👍"
@@ -93,6 +94,20 @@ class TelegramUI(UI):
             sender_id: int = item["sender_id"]
             self._current_sender_id = sender_id
             mode: str = item.get("mode", "ask")
+
+            if mode == "skip":
+                self._run_async(self._async_send_buttons(
+                    sender_id, "Type the word to add to skip list:",
+                    [[("inline", "Cancel", "skip_cancel")]]
+                ))
+                self._in_skip_mode = True
+                word_raw = self._add_step_queue.get()
+                self._in_skip_mode = False
+                if word_raw is None:
+                    self._send_action_menu(sender_id)
+                    continue
+                callback(True, "", TriggerParams(mode="skip", skip_word=word_raw.lower().strip()))
+                return
 
             if mode != "ask":
                 callback(True, "", TriggerParams(mode=mode, category=None))
@@ -177,25 +192,62 @@ class TelegramUI(UI):
         self._send_action_menu(sender_id)
         callback(True, "")
 
-    def show_state(self, data: dict[str, StateValue], callback: Callback) -> None:
-        import json
+    def show_state(self, data: AppStateData, callback: Callback) -> None:
         sender_id = self._current_sender_id
         if not self._active or sender_id is None:
             callback(True, "")
             return
-        if not data:
-            self._run_async(self._async_send_text(sender_id, "State is empty."))
-        else:
-            # Build one block per key, then chunk at 4000 chars
-            entries = [
-                f"{key}:\n{json.dumps(data[key], indent=2, ensure_ascii=False)}"
-                for key in sorted(data)
-            ]
-            text = "\n\n".join(entries)
-            chunk_size = 4000
-            for i in range(0, max(len(text), 1), chunk_size):
-                chunk = text[i:i + chunk_size]
-                self._run_async(self._async_send_text(sender_id, f"```\n{chunk}\n```"))
+
+        def _send_block(text: str) -> None:
+            self._run_async(self._async_send_text(sender_id, text))
+
+        # Block 1: Sources
+        lines = [f"Sources ({len(data.source_states)})"]
+        for entry in data.source_states:
+            status = "active" if entry.active else "inactive"
+            if entry.last_read_ts:
+                from datetime import datetime
+                ts_str = datetime.fromtimestamp(entry.last_read_ts).strftime("%b %d %H:%M")
+            else:
+                ts_str = "never read"
+            lines.append(f"{entry.source_id}: {status}, last read {ts_str}")
+        _send_block("\n".join(lines))
+
+        # Block 2: Common interests
+        n_common = len(data.common_interests)
+        block2_lines = [f"Common interests ({n_common} keywords)"]
+        for k, v in data.common_interests.items():
+            block2_lines.append(f"- {k}: {v:.1f}")
+        block2 = "\n".join(block2_lines)
+        if len(block2) > 4000:
+            truncated2: list[str] = [block2_lines[0]]
+            for line in block2_lines[1:]:
+                if len("\n".join(truncated2 + [line])) + 20 > 4000:
+                    remaining = n_common - (len(truncated2) - 1)
+                    truncated2.append(f"... +{remaining} more")
+                    break
+                truncated2.append(line)
+            block2 = "\n".join(truncated2)
+        _send_block(block2)
+
+        # Block per category
+        for cat, keywords in data.category_interests.items():
+            n_cat = len(keywords)
+            cat_lines = [f"Category: {cat} ({n_cat} keywords)"]
+            for k, v in keywords.items():
+                cat_lines.append(f"- {k}: {v:.1f}")
+            block = "\n".join(cat_lines)
+            if len(block) > 4000:
+                truncated_cat: list[str] = [cat_lines[0]]
+                for line in cat_lines[1:]:
+                    if len("\n".join(truncated_cat + [line])) + 20 > 4000:
+                        remaining = n_cat - (len(truncated_cat) - 1)
+                        truncated_cat.append(f"... +{remaining} more")
+                        break
+                    truncated_cat.append(line)
+                block = "\n".join(truncated_cat)
+            _send_block(block)
+
         self._send_action_menu(sender_id)
         callback(True, "")
 
@@ -263,16 +315,16 @@ class TelegramUI(UI):
         self._client = client
 
         # Register event handlers on the client before starting
-        @client.on(events.NewMessage(incoming=True, pattern=r"(?i)^/?(run|start|add|logs|state)"))
+        @client.on(events.NewMessage(incoming=True, pattern=r"(?i)^/?(run|start|add|logs|state|skip)"))
         async def on_trigger(event: object) -> None:  # type: ignore[type-arg]
             sender = await event.get_sender()  # type: ignore[attr-defined]
             if not self._is_controller(sender):
                 logger.info("telegram_ui: ignoring command from non-controller %s", _username(sender))
                 return
-            if self._in_add_mode:
-                return  # Ignore trigger commands during add conversation
+            if self._in_add_mode or self._in_skip_mode:
+                return  # Ignore trigger commands during interactive conversation
             cmd = event.raw_text.strip().lstrip("/").lower().split()[0]  # type: ignore[attr-defined]
-            mode = {"run": "ask", "start": "ask", "add": "add", "logs": "logs", "state": "state"}.get(cmd, "ask")
+            mode = {"run": "ask", "start": "ask", "add": "add", "logs": "logs", "state": "state", "skip": "skip"}.get(cmd, "ask")
             logger.info("telegram_ui: /%s received from %s (mode=%s)", cmd, _username(sender), mode)
             _save_last_chat(event.sender_id)  # type: ignore[attr-defined]
             if mode != "ask" and self._waiting_for_category:
@@ -281,7 +333,7 @@ class TelegramUI(UI):
 
         @client.on(events.NewMessage(incoming=True))
         async def on_add_message(event: object) -> None:  # type: ignore[type-arg]
-            if not self._in_add_mode:
+            if not self._in_add_mode and not self._in_skip_mode:
                 return
             sender = await event.get_sender()  # type: ignore[attr-defined]
             if not self._is_controller(sender):
@@ -311,9 +363,12 @@ class TelegramUI(UI):
             elif data == "add_cancel":
                 self._add_step_queue.put(None)
                 await event.answer()  # type: ignore[attr-defined]
+            elif data == "skip_cancel":
+                self._add_step_queue.put(None)
+                await event.answer()  # type: ignore[attr-defined]
             elif data.startswith("menu:"):
                 cmd = data[5:]
-                mode = {"show": "ask", "add": "add", "logs": "logs", "state": "state"}.get(cmd, "ask")
+                mode = {"show": "ask", "add": "add", "logs": "logs", "state": "state", "skip": "skip"}.get(cmd, "ask")
                 sender_id = event.sender_id  # type: ignore[attr-defined]
                 _save_last_chat(sender_id)
                 if mode != "ask" and self._waiting_for_category:
@@ -376,7 +431,7 @@ class TelegramUI(UI):
         return username.lower() in self._controller_usernames
 
     def _send_action_menu(self, sender_id: int) -> None:
-        """Send the SHOW / ADD SOURCE / LOGS / STATE action menu."""
+        """Send the SHOW / ADD SOURCE / LOGS / STATE / SKIP WORD action menu."""
         self._run_async(self._async_send_buttons(
             sender_id,
             "What next?",
@@ -385,6 +440,7 @@ class TelegramUI(UI):
                 [("inline", "\uff0b  ADD SOURCE", "menu:add")],
                 [("inline", "\U0001f4cb  LOGS", "menu:logs")],
                 [("inline", "\U0001f5c4  STATE", "menu:state")],
+                [("inline", "\u26d4  SKIP WORD", "menu:skip")],
             ],
         ))
 

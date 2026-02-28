@@ -1,7 +1,7 @@
 from .._types import Callback, TriggerCallback, FeedbackListCallback, NewSourceCallback
+from ..types.app_state import AppStateData
 from ..types.content import Content
 from ..types.params import UIParams
-from ..types.values import StateValue
 from . import UI
 
 
@@ -12,5 +12,5 @@ class MockUI(UI):
     def receive_score(self, id: str, score: float) -> None: pass
     def prompt_new_source(self, callback: NewSourceCallback) -> None: callback(True, "", None)
     def show_logs(self, lines: list[str], callback: Callback) -> None: callback(True, "")
-    def show_state(self, data: dict[str, StateValue], callback: Callback) -> None: callback(True, "")
+    def show_state(self, data: AppStateData, callback: Callback) -> None: callback(True, "")
     def terminate(self) -> None: pass

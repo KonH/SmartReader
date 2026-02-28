@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 
 from .._types import Callback, TriggerCallback, FeedbackListCallback, NewSourceCallback
+from ..types.app_state import AppStateData
 from ..types.content import Content
 from ..types.params import UIParams
-from ..types.values import StateValue
 
 
 class UI(ABC):
@@ -26,7 +26,7 @@ class UI(ABC):
     def show_logs(self, lines: list[str], callback: Callback) -> None: ...
 
     @abstractmethod
-    def show_state(self, data: dict[str, StateValue], callback: Callback) -> None: ...
+    def show_state(self, data: AppStateData, callback: Callback) -> None: ...
 
     @abstractmethod
     def terminate(self) -> None: ...

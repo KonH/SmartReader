@@ -14,6 +14,7 @@ from .main import Coordinator
 from .scoring.adapter import ScoringAdapter
 from .scoring.keyword import L1KeywordScoring, L2KeywordScoring
 from .secrets.env import EnvSecrets
+from .state.app_state import AppState
 from .state.sqlite import SQLiteState
 from .summarize.mock import MockSummarize
 from .summarize.trim import TrimSummarize
@@ -42,6 +43,7 @@ def _pick_ui() -> UI:
 def main() -> None:
     config = TOMLConfig()
     state = SQLiteState()
+    app_state = AppState(state)
 
     shared_common: dict[str, float] = {}
     shared_category: dict[str, dict[str, float]] = {}
@@ -63,6 +65,7 @@ def main() -> None:
         ),
         summarize=TrimSummarize(MockSummarize(), config),
         secrets=EnvSecrets(),
+        app_state=app_state,
     )
 
     def on_init(ok: bool, err: str) -> None:
