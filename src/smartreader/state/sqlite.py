@@ -3,7 +3,7 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from .._types import Callback, StateValueCallback
+from .._types import AllStateCallback, Callback, StateValueCallback
 from ..types.params import ConfigParams
 from ..types.values import StateValue
 from . import State
@@ -68,6 +68,14 @@ class SQLiteState(State):
             callback(True, "")
         except Exception as e:
             callback(False, str(e))
+
+    def read_all(self, callback: AllStateCallback) -> None:
+        try:
+            rows = self._db().execute(f"SELECT key, value FROM {_TABLE}").fetchall()
+            result: dict[str, StateValue] = {key: json.loads(val) for key, val in rows}
+            callback(True, "", result)
+        except Exception as e:
+            callback(False, str(e), {})
 
     def save(self, callback: Callback) -> None:
         # write_value commits on every call; save is a no-op

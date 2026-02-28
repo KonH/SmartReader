@@ -11,9 +11,17 @@ _CONSOLE_FMT = "%(levelname)s %(name)s: %(message)s"
 
 _SCOPES = ("input", "scoring", "summarize")
 
+_current_log_file: Path | None = None
+
+
+def get_log_file() -> Path | None:
+    """Return the path to the current INFO-level log file, or None if not yet set."""
+    return _current_log_file
+
 
 def setup(log_dir: Path = _LOG_DIR) -> None:
     """Create timestamped log files and attach handlers to the root and scope loggers."""
+    global _current_log_file
     log_dir.mkdir(parents=True, exist_ok=True)
 
     prefix = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_")
@@ -30,7 +38,9 @@ def setup(log_dir: Path = _LOG_DIR) -> None:
     root.addHandler(console)
 
     # logs.log — INFO+ from all loggers
-    _file_handler(log_dir / f"{prefix}logs.log", logging.INFO, file_fmt, root)
+    log_path = log_dir / f"{prefix}logs.log"
+    _current_log_file = log_path
+    _file_handler(log_path, logging.INFO, file_fmt, root)
 
     # logs.errors.log — ERROR+ from all loggers
     _file_handler(log_dir / f"{prefix}logs.errors.log", logging.ERROR, file_fmt, root)

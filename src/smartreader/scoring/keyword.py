@@ -95,25 +95,29 @@ class BaseKeywordScoring(Scoring):
     # ── Scoring ───────────────────────────────────────────────────────────────
 
     def score(self, content: Content, effort_level: int, callback: ScoreCallback) -> None:
-        text = self._get_text(content)
-        tokens = set(_tokenize(text, self._skip))
+        try:
+            text = self._get_text(content)
+            tokens = set(_tokenize(text, self._skip))
 
-        common_score = sum(
-            weight * self._common_weight
-            for kw, weight in self._common_kw.items()
-            if kw.lower() in tokens
-        )
-
-        category_score = 0.0
-        if content.category:
-            cat_kw = self._category_kw.get(content.category, {})
-            category_score = sum(
-                weight * self._category_weight
-                for kw, weight in cat_kw.items()
+            common_score = sum(
+                weight * self._common_weight
+                for kw, weight in self._common_kw.items()
                 if kw.lower() in tokens
             )
 
-        callback(True, "", common_score + category_score)
+            category_score = 0.0
+            if content.category:
+                cat_kw = self._category_kw.get(content.category, {})
+                category_score = sum(
+                    weight * self._category_weight
+                    for kw, weight in cat_kw.items()
+                    if kw.lower() in tokens
+                )
+
+            callback(True, "", common_score + category_score)
+        except Exception as e:
+            logger.error(f"Error scoring content: {e}")
+            callback(False, str(e))
 
     # ── Interest update ───────────────────────────────────────────────────────
 

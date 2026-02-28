@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(chmod +x:*)",
+      "Bash(git:*)",
+      "Bash(PYTHONPATH=src python:*)",
+      "Bash(source:*)",
+      "Bash(source .venv/bin/activate && pip install feedparser -q && PYTHONPATH=src python -m pytest tests/ -v 2>&1)",
+      "Bash(head:*)",
+      "Bash(ls:*)",
+      "Bash(PYTHONPATH=/mnt/d/WSL/WorkSpace/SmartReader/src .venv/bin/python:*)",
+      "Bash(PYTHONPATH=src .venv/bin/python:*)"
+    ]
+  }
+}

@@ -12,7 +12,7 @@ from .secrets import Secrets
 from .state import State
 from .summarize import Summarize
 from .types.content import Content
-from .types.params import ConfigParams, SecretsParams, TriggerParams, UIParams
+from .types.params import ConfigParams, NewSourceParams, SecretsParams, TriggerParams, UIParams
 from .ui import UI
 
 logger = logging.getLogger(__name__)
@@ -149,10 +149,74 @@ class Coordinator:
             return
         self._trigger_category = params.category
         logger.info("trigger received: mode=%s category=%s", params.mode, params.category)
+        if params.mode == "add":
+            self._ui.prompt_new_source(self._on_add_source)
+        elif params.mode == "logs":
+            self._handle_show_logs()
+        elif params.mode == "state":
+            self._handle_show_state()
+        else:
+            self._config.read_value(
+                "common",
+                lambda ok2, err2, val: self._on_common_config(ok2, err2, val),
+            )
+
+    def _on_add_source(self, ok: bool, err: str, source_params: NewSourceParams | None) -> None:
+        if not ok:
+            logger.error("prompt_new_source error: %s", err)
+            return
+        if source_params is None:
+            logger.info("add source cancelled")
+            return
         self._config.read_value(
-            "common",
-            lambda ok2, err2, val: self._on_common_config(ok2, err2, val),
+            "sources",
+            lambda ok2, err2, val: self._write_new_source(ok2, err2, val, source_params),
         )
+
+    def _write_new_source(
+        self, ok: bool, err: str, sources: object, source_params: NewSourceParams
+    ) -> None:
+        data: dict = sources if ok and isinstance(sources, dict) else {}
+        entry: dict = {"type": source_params.source_type, "externalId": source_params.external_id}
+        if source_params.category:
+            entry["category"] = source_params.category
+        data.setdefault(source_params.name, []).append(entry)
+        self._config.write_value(
+            "sources", data,
+            lambda ok2, err2: self._save_and_restart(ok2, err2),
+        )
+
+    def _save_and_restart(self, ok: bool, err: str) -> None:
+        if not ok:
+            logger.error("write_value error: %s", err)
+        self._config.save(lambda ok2, err2: self._do_restart(ok2, err2))
+
+    def _do_restart(self, ok: bool, err: str) -> None:
+        if not ok:
+            logger.error("config save error: %s", err)
+        import sys
+        logger.info("config saved with new source, restarting")
+        sys.exit(0)
+
+    def _handle_show_state(self) -> None:
+        self._state.read_all(
+            lambda ok, err, data: self._ui.show_state(
+                data if ok else {},
+                lambda ok2, err2: None,
+            )
+        )
+
+    def _handle_show_logs(self) -> None:
+        from ._logging import get_log_file
+        log_path = get_log_file()
+        lines: list[str] = []
+        if log_path and log_path.exists():
+            with open(log_path) as f:
+                all_lines = f.readlines()
+            lines = [ln.rstrip("\n") for ln in all_lines[-100:]]
+        else:
+            lines = ["No log file found."]
+        self._ui.show_logs(lines, lambda ok, err: None)
 
     def _on_common_config(self, ok: bool, err: str, val: dict) -> None:
         if ok and isinstance(val, dict):

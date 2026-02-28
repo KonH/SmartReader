@@ -22,6 +22,7 @@ class StubState(State):
         self._data[key] = value
         self.written[key] = value
         callback(True, "")
+    def read_all(self, callback) -> None: callback(True, "", self._data)
     def save(self, callback) -> None: callback(True, "")
 
 
