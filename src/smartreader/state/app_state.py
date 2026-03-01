@@ -1,20 +1,49 @@
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
 
 from .._types import AppStateCallback, Callback
 from ..types.app_state import AppStateData, SourceStateEntry
+from ..types.content import Content
 
 if TYPE_CHECKING:
     from . import State
+    from ..config import Config
+    from ..input import Input
+    from ..scoring import Scoring
+    from ..summarize import Summarize
 
 logger = logging.getLogger(__name__)
 
 
 class AppState:
-    """Typed wrapper on top of the raw State key-value store."""
+    """Typed wrapper on top of the raw State key-value store.
 
-    def __init__(self, state: "State") -> None:
+    Also holds module references and runtime (non-persisted) fields so that
+    command objects can access everything they need through a single object.
+    """
+
+    def __init__(
+        self,
+        state: "State",
+        config: "Config | None" = None,
+        scoring: "Scoring | None" = None,
+        summarize: "Summarize | None" = None,
+        input: "Input | None" = None,
+    ) -> None:
         self._state = state
+        self.config = config
+        self.scoring = scoring
+        self.summarize = summarize
+        self.input = input
+        # Runtime (non-persisted) fields populated during pipeline execution
+        self.categories: list[str] = []
+        self.active_source_ids: list[str] = []
+        self.successful_source_ids: list[str] = []
+        self.shown_items: list[Content] = []
+        self.trigger_category: str | None = None
+        self.initial_days_interval: int = 7
 
     def read_all_typed(self, callback: AppStateCallback) -> None:
         self._state.read_all(

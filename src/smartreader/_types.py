@@ -2,7 +2,6 @@ from typing import Callable
 
 from .types.app_state import AppStateData
 from .types.content import Content
-from .types.params import NewSourceParams, TriggerParams
 from .types.values import StateValue
 
 # success, error
@@ -13,12 +12,9 @@ StringCallback        = Callable[[bool, str, str], None]
 ScoreCallback         = Callable[[bool, str, float], None]
 ContentCallback       = Callable[[bool, str, Content], None]
 ContentListCallback   = Callable[[bool, str, list[Content]], None]
-TriggerCallback       = Callable[[bool, str, TriggerParams], None]
 StateValueCallback    = Callable[[bool, str, StateValue], None]
 AllStateCallback      = Callable[[bool, str, dict[str, StateValue]], None]
 AppStateCallback      = Callable[[bool, str, AppStateData], None]
-FeedbackListCallback  = Callable[[bool, str, list[tuple[str, bool]]], None]
-NewSourceCallback     = Callable[[bool, str, "NewSourceParams | None"], None]
 
 # Called from TelegramUI when an inline vote button is pressed
 LiveFeedbackHandler = Callable[[Content, bool], None]

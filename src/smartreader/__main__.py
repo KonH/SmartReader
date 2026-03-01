@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import sys
 import tomllib
+from pathlib import Path
 
 from ._logging import setup as setup_logging
 from .config.toml import TOMLConfig
@@ -18,50 +19,93 @@ from .state.sqlite import SQLiteState
 from .summarize.mock import MockSummarize
 from .summarize.trim import TrimSummarize
 from .ui import UI
+from .ui.command import UICommand
+from .ui.commands import (
+    AddSourceCommand,
+    ShowContentCommand,
+    ShowLogsCommand,
+    ShowStateCommand,
+    SkipWordCommand,
+)
 from .ui.telegram import TelegramUI
+from .ui.telegram.state import TelegramSharedUIState
 from .ui.terminal import TerminalUI
+from .ui.terminal.state import TerminalSharedUIState
 
 setup_logging()
 
 logger = logging.getLogger(__name__)
 
+# Ordered list of known abstract command types (defines what this app supports)
+_KNOWN_COMMAND_TYPES: list[type[UICommand]] = [
+    ShowContentCommand,
+    AddSourceCommand,
+    ShowLogsCommand,
+    ShowStateCommand,
+    SkipWordCommand,
+]
 
-def _pick_ui() -> UI:
-    """Read config.toml early to decide which UI to instantiate."""
+
+def _make_shared_ui_state_and_ui() -> tuple[object, UI]:
+    """Read config.toml early to decide which UI/shared state to create."""
     try:
         with open("config.toml", "rb") as f:
             cfg = tomllib.load(f)
-    except (FileNotFoundError, Exception):
+    except Exception:
         cfg = {}
+
     if cfg.get("telegram_ui", {}).get("active"):
         logger.info("using TelegramUI")
-        return TelegramUI()
-    return TerminalUI()
+        shared = TelegramSharedUIState()
+        ui: UI = TelegramUI(shared)
+    else:
+        shared = TerminalSharedUIState()
+        ui = TerminalUI(shared)
+
+    return shared, ui
 
 
 def main() -> None:
-    from pathlib import Path as _Path
-    state_path = _Path(sys.argv[1]) if len(sys.argv) > 1 else _Path("state.sqlite")
+    state_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("state.sqlite")
+
     config = TOMLConfig()
     state = SQLiteState(path=state_path)
-    app_state = AppState(state)
 
     shared_common: dict[str, float] = {}
     shared_category: dict[str, dict[str, float]] = {}
 
+    scoring = ScoringAdapter(config, state, shared_common, shared_category)
+    summarize = TrimSummarize(MockSummarize(), config)
+    source_reader = SourceReader(
+        config=config,
+        readers={"rss": RSSReader(), "telegram": TelegramReader()},
+    )
+
+    app_state = AppState(
+        state=state,
+        config=config,
+        scoring=scoring,
+        summarize=summarize,
+        input=source_reader,
+    )
+
+    shared_ui_state, ui = _make_shared_ui_state_and_ui()
+
+    # Instantiate only commands that the UI supports and that are in our known set
+    ui_cmd_types = ui.get_commands()
+    commands: list[UICommand] = [
+        cmd_type(app_state, shared_ui_state)
+        for cmd_type in ui_cmd_types
+        if any(issubclass(cmd_type, k) for k in _KNOWN_COMMAND_TYPES)
+    ]
+
     coordinator = Coordinator(
-        ui=_pick_ui(),
-        input=SourceReader(
-            config=config,
-            readers={
-                "rss": RSSReader(),
-                "telegram": TelegramReader(),
-            },
-        ),
+        ui=ui,
+        input=source_reader,
         config=config,
         state=state,
-        scoring=ScoringAdapter(config, state, shared_common, shared_category),
-        summarize=TrimSummarize(MockSummarize(), config),
+        scoring=scoring,
+        summarize=summarize,
         secrets=EnvSecrets(),
         app_state=app_state,
     )
@@ -70,7 +114,7 @@ def main() -> None:
         if not ok:
             logger.error("init failed: %s", err)
             sys.exit(1)
-        coordinator.run()
+        coordinator.run(commands)
 
     try:
         coordinator.initialize(on_init)
