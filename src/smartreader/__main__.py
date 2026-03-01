@@ -41,8 +41,10 @@ def _pick_ui() -> UI:
 
 
 def main() -> None:
+    from pathlib import Path as _Path
+    state_path = _Path(sys.argv[1]) if len(sys.argv) > 1 else _Path("state.sqlite")
     config = TOMLConfig()
-    state = SQLiteState()
+    state = SQLiteState(path=state_path)
     app_state = AppState(state)
 
     shared_common: dict[str, float] = {}

@@ -23,7 +23,7 @@ while true; do
 
     starts+=("$now")
     echo "[retry_run] launching run.sh (start ${#starts[@]}/$MAX_RETRIES in window)" >&2
-    "$SCRIPT_DIR/run.sh" || true
+    "$SCRIPT_DIR/run.sh" "$@" || true
     echo "[retry_run] exited; retrying in 2s…" >&2
     sleep 2
 done

@@ -143,9 +143,12 @@ class TelegramUI(UI):
                 self._run_async(self._async_send_text(sender_id, "No new content found."))
         else:
             for item in content:
-                text = item.summary or item.body
-                title_part = f"[{_escape_md(item.title)}]({item.url})" if item.url else _escape_md(item.title)
-                msg_text = f"`[{item.source_id}]` {title_part}\n\n{text}"
+                body = _md_to_html(item.summary or item.body or "")
+                if item.url:
+                    title_part = f'<a href="{item.url}">{_md_to_html(item.title)}</a>'
+                else:
+                    title_part = _md_to_html(item.title)
+                msg_text = f"<code>[{item.source_id}]</code> {title_part}\n\n{body}"
                 buttons = [
                     [
                         ("inline", self._upvote_text, f"vote:up:{item.id}"),
@@ -153,7 +156,7 @@ class TelegramUI(UI):
                     ]
                 ]
                 if sender_id is not None:
-                    msg_id = self._run_async(self._async_send_buttons(sender_id, msg_text, buttons))
+                    msg_id = self._run_async(self._async_send_buttons(sender_id, msg_text, buttons, parse_mode="html"))
                     if isinstance(msg_id, int):
                         self._msg_loc_by_content_id[item.id] = (sender_id, msg_id)
 
@@ -455,11 +458,11 @@ class TelegramUI(UI):
         self._run_async(self._async_send_buttons(
             sender_id,
             "Step 1/4 \u2014 Select source type:",
-            [[
-                ("inline", "RSS", "add_type:rss"),
-                ("inline", "Telegram", "add_type:telegram"),
-                ("inline", "Cancel", "add_cancel"),
-            ]],
+            [
+                [("inline", "RSS", "add_type:rss")],
+                [("inline", "Telegram", "add_type:telegram")],
+                [("inline", "Cancel", "add_cancel")],
+            ],
         ))
         type_val = self._add_step_queue.get()
         if type_val is None:
@@ -487,10 +490,10 @@ class TelegramUI(UI):
         self._run_async(self._async_send_buttons(
             sender_id,
             f"Step 3/4 \u2014 Enter a source name (config key) or skip to use the default:\n`{default_name}`",
-            [[
-                ("inline", f"Skip \u2014 use \u2018{default_name}\u2019", "add_skip"),
-                ("inline", "Cancel", "add_cancel"),
-            ]],
+            [
+                [("inline", f"Skip \u2014 use \u2018{default_name}\u2019", "add_skip")],
+                [("inline", "Cancel", "add_cancel")],
+            ],
         ))
         name_val = self._add_step_queue.get()
         if name_val is None:
@@ -618,7 +621,8 @@ class TelegramUI(UI):
         await client.send_message(chat_id, "Select a category:", buttons=buttons)
 
     async def _async_send_buttons(
-        self, chat_id: int, text: str, buttons_spec: list[list[tuple[str, str, str]]]
+        self, chat_id: int, text: str, buttons_spec: list[list[tuple[str, str, str]]],
+        parse_mode: str = "md",
     ) -> int:
         from telethon import TelegramClient  # type: ignore[import-untyped]
         from telethon.tl.custom import Button  # type: ignore[import-untyped]
@@ -628,7 +632,7 @@ class TelegramUI(UI):
             for row in buttons_spec
         ]
         msg = await client.send_message(
-            chat_id, text, buttons=buttons, link_preview=False, parse_mode="md"
+            chat_id, text, buttons=buttons, link_preview=False, parse_mode=parse_mode
         )
         return msg.id
 
@@ -724,6 +728,29 @@ def _escape_md(text: str) -> str:
     """Escape Markdown special chars for Telegram MarkdownV1."""
     for ch in ("*", "_", "`", "["):
         text = text.replace(ch, f"\\{ch}")
+    return text
+
+
+def _html_escape(text: str) -> str:
+    """Escape text for embedding inside an HTML parse_mode message."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _md_to_html(text: str) -> str:
+    """HTML-escape arbitrary text then convert common Markdown patterns to HTML tags.
+
+    Order matters: HTML-escape first so that '<' / '>' in the source text don't
+    collide with the tags we insert afterwards.
+    Handles: [text](url) links, **bold**, `inline code`.
+    Single-star italic is intentionally skipped to avoid false positives.
+    """
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # [link text](https://...) → <a href="...">link text</a>
+    text = re.sub(r'\[([^\]\n]+)\]\((https?://[^\)\s]+)\)', r'<a href="\2">\1</a>', text)
+    # **bold** → <b>bold</b>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    # `code` → <code>code</code>
+    text = re.sub(r'`([^`\n]+)`', r'<code>\1</code>', text)
     return text
 
 

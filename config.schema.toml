@@ -2,7 +2,8 @@
 # Copy this file to config.toml and adjust values to your needs.
 
 [scoring]
-top_n = 10            # Number of top-scoring articles passed to the summarizer each run
+top_n_l1 = 10         # Max articles passed to the summarizer after L1 keyword scoring
+top_n_l2 = 5          # Max articles shown to the user after L2 scoring (post-summarize)
 
 [scoring.keyword]
 common_weight = 1.0   # Weight applied to global keyword interests

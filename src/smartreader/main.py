@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 _EFFORT_L1 = 1
 _EFFORT_L2 = 2
-_TOP_N_DEFAULT = 10
+_TOP_N_L1_DEFAULT = 10
+_TOP_N_L2_DEFAULT = 5
 
 
 class Coordinator:
@@ -327,6 +328,7 @@ class Coordinator:
             return
         if not items:
             logger.info("no new content")
+            self._show([])
             return
         logger.info("read %d item(s), starting L1 scoring", len(items))
         self._score_l1(items)
@@ -354,46 +356,57 @@ class Coordinator:
         )
 
     def _on_top_n(self, ok: bool, err: str, val: dict, items: list[Content]) -> None:
-        n: int = int(val.get("top_n", _TOP_N_DEFAULT)) if ok and isinstance(val, dict) else _TOP_N_DEFAULT
+        n: int = int(val.get("top_n_l1", _TOP_N_L1_DEFAULT)) if ok and isinstance(val, dict) else _TOP_N_L1_DEFAULT
         top = sorted(items, key=lambda c: c.score or 0.0, reverse=True)[:n]
         logger.info("selected top %d/%d item(s) for summarization", len(top), len(items))
-        self._summarize_all(top, [])
+        self._summarize_all(top)
 
     # ── Step 4: summarize ─────────────────────────────────────────────────────
 
-    def _summarize_all(self, remaining: list[Content], done: list[Content]) -> None:
-        if not remaining:
-            logger.info("summarization done: %d item(s), starting L2 scoring", len(done))
-            self._score_l2(done, [])
-            return
-        item, *rest = remaining
-        logger.info("summarizing %r (%d remaining)", item.id, len(remaining))
+    def _summarize_all(self, items: list[Content]) -> None:
+        done: list[Content] = []
+        for item in items:
+            result: list[Content] = []
 
-        def on_summary(ok: bool, err: str, result: Content) -> None:
-            if not ok:
-                logger.warning("summarize error for %s: %s", item.id, err)
-            self._summarize_all(rest, done + [result if ok else item])
+            def on_summary(ok: bool, err: str, summarized: Content, _r: list[Content] = result, _item: Content = item) -> None:
+                if not ok:
+                    logger.warning("summarize error for %s: %s", _item.id, err)
+                _r.append(summarized if ok else _item)
 
-        self._summarize.summarize(item, on_summary)
+            logger.info("summarizing %r", item.id)
+            self._summarize.summarize(item, on_summary)
+            done.append(result[0] if result else item)
+
+        logger.info("summarization done: %d item(s), starting L2 scoring", len(done))
+        self._score_l2(done)
 
     # ── Step 5: L2 scoring ────────────────────────────────────────────────────
 
-    def _score_l2(self, remaining: list[Content], scored: list[Content]) -> None:
-        if not remaining:
-            logger.info("L2 scoring done: %d item(s) scored", len(scored))
-            self._show(scored)
-            return
-        item, *rest = remaining
+    def _score_l2(self, items: list[Content]) -> None:
+        for item in items:
+            def on_score(ok: bool, err: str, score: float, _item: Content = item) -> None:
+                if ok:
+                    _item.score = score
+                    logger.info("L2 scored %r: %.3f", _item.id, score)
+                else:
+                    logger.warning("l2 score error for %s: %s", _item.id, err)
+            self._scoring.score(item, _EFFORT_L2, on_score)
+        logger.info("L2 scoring done: %d item(s) scored", len(items))
+        self._select_top_n_l2(items)
 
-        def on_score(ok: bool, err: str, score: float) -> None:
-            if ok:
-                item.score = score
-                logger.info("L2 scored %r: %.3f", item.id, score)
-            else:
-                logger.warning("l2 score error for %s: %s", item.id, err)
-            self._score_l2(rest, scored + [item])
+    # ── Step 5b: select top N after L2 ────────────────────────────────────────
 
-        self._scoring.score(item, _EFFORT_L2, on_score)
+    def _select_top_n_l2(self, items: list[Content]) -> None:
+        self._config.read_value(
+            "scoring",
+            lambda ok, err, val: self._on_top_n_l2(ok, err, val, items),
+        )
+
+    def _on_top_n_l2(self, ok: bool, err: str, val: dict, items: list[Content]) -> None:
+        n: int = int(val.get("top_n_l2", _TOP_N_L2_DEFAULT)) if ok and isinstance(val, dict) else _TOP_N_L2_DEFAULT
+        top = sorted(items, key=lambda c: c.score or 0.0, reverse=True)[:n]
+        logger.info("selected top %d/%d item(s) for display", len(top), len(items))
+        self._show(top)
 
     # ── Step 6: show + collect feedback ───────────────────────────────────────
 
