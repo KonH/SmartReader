@@ -2,7 +2,7 @@ import pytest
 
 from smartreader.config import Config
 from smartreader.scoring.adapter import ScoringAdapter
-from smartreader.scoring.keyword import KeywordScoring, L1KeywordScoring, L2KeywordScoring
+from smartreader.scoring.keyword import L1KeywordScoring, L2KeywordScoring
 from smartreader.state import State
 from smartreader.types.content import Content
 from smartreader.types.params import ConfigParams
@@ -52,18 +52,18 @@ def _make_l1(
         "common_keyword_interests": common_kw,
         "category_interests": category_kw,
     })
-    cfg: dict = {"keyword": {"common_weight": common_weight, "category_weight": category_weight}}
+    cfg: dict = {}
     if skip is not None:
-        cfg["keyword"]["skip"] = skip
+        cfg["skip"] = skip
     config = StubConfig(cfg)
-    scoring = L1KeywordScoring(state=state, config=config)
+    scoring = L1KeywordScoring(state=state, config=config,
+                               common_weight=common_weight, category_weight=category_weight)
     scoring.initialize(lambda ok, err: None)
     return scoring, state
 
 
 def _make_scoring(common_kw: dict = {}, category_kw: dict = {},
-                  common_weight: float = 1.0, category_weight: float = 1.0) -> KeywordScoring:
-    """Backwards-compatible helper (KeywordScoring == L1KeywordScoring)."""
+                  common_weight: float = 1.0, category_weight: float = 1.0) -> L1KeywordScoring:
     scoring, _ = _make_l1(common_kw, category_kw, common_weight, category_weight)
     return scoring
 
@@ -141,11 +141,9 @@ def test_multiple_keywords_scores_accumulate() -> None:
 # ── L1 / L2 split ─────────────────────────────────────────────────────────────
 
 def test_l2_uses_summary_when_available() -> None:
-    scoring, _ = _make_l1(common_kw={"keyword": 1.0})
-    # For L2 we use an L2 instance sharing the same interests
     state = StubState({"common_keyword_interests": {"keyword": 1.0}, "category_interests": {}})
-    config = StubConfig({"keyword": {"common_weight": 1.0, "category_weight": 1.0}})
-    l2 = L2KeywordScoring(state=state, config=config)
+    config = StubConfig({})
+    l2 = L2KeywordScoring(state=state, config=config, common_weight=1.0, category_weight=1.0)
     l2.initialize(lambda ok, err: None)
     content = _content(title="Title", body="no match", summary="keyword is here")
     assert _score(l2, content, effort=2) > 0.0
@@ -153,8 +151,8 @@ def test_l2_uses_summary_when_available() -> None:
 
 def test_l2_falls_back_to_body_when_no_summary() -> None:
     state = StubState({"common_keyword_interests": {"keyword": 1.0}, "category_interests": {}})
-    config = StubConfig({"keyword": {"common_weight": 1.0, "category_weight": 1.0}})
-    l2 = L2KeywordScoring(state=state, config=config)
+    config = StubConfig({})
+    l2 = L2KeywordScoring(state=state, config=config, common_weight=1.0, category_weight=1.0)
     l2.initialize(lambda ok, err: None)
     content = _content(title="Title", body="keyword is here", summary=None)
     assert _score(l2, content, effort=2) > 0.0
@@ -222,13 +220,13 @@ def _make_adapter(
         "common_keyword_interests": common_kw,
         "category_interests": category_kw,
     })
-    config = StubConfig({"keyword": {"common_weight": common_weight, "category_weight": category_weight}})
+    config = StubConfig({
+        "l1": [{"type": "keyword", "common_weight": common_weight, "category_weight": category_weight}],
+        "l2": [{"type": "keyword", "common_weight": common_weight, "category_weight": category_weight}],
+    })
     shared_common: dict[str, float] = {}
     shared_category: dict[str, dict[str, float]] = {}
-    adapter = ScoringAdapter(
-        l1=L1KeywordScoring(state, config, shared_common, shared_category),
-        l2=L2KeywordScoring(state, config, shared_common, shared_category),
-    )
+    adapter = ScoringAdapter(config, state, shared_common, shared_category)
     adapter.initialize(lambda ok, err: None)
     return adapter, state
 

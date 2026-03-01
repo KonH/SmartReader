@@ -221,11 +221,10 @@ class Coordinator:
 
     def _on_scoring_for_skip(self, ok: bool, err: str, val: dict, word: str) -> None:
         scoring: dict = val if isinstance(val, dict) else {}
-        kw: dict = scoring.setdefault("keyword", {})
-        skip_list: list = list(kw.get("skip", []))
+        skip_list: list = list(scoring.get("skip", []))
         if word not in skip_list:
             skip_list.append(word)
-        kw["skip"] = skip_list
+        scoring["skip"] = skip_list
         self._config.write_value(
             "scoring", scoring,
             lambda ok2, err2: self._on_skip_config_written(ok2, err2, word),

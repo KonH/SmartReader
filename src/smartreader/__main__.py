@@ -12,7 +12,6 @@ from .input.source_reader import SourceReader
 from .input.telegram import TelegramReader
 from .main import Coordinator
 from .scoring.adapter import ScoringAdapter
-from .scoring.keyword import L1KeywordScoring, L2KeywordScoring
 from .secrets.env import EnvSecrets
 from .state.app_state import AppState
 from .state.sqlite import SQLiteState
@@ -61,10 +60,7 @@ def main() -> None:
         ),
         config=config,
         state=state,
-        scoring=ScoringAdapter(
-            l1=L1KeywordScoring(state, config, shared_common, shared_category),
-            l2=L2KeywordScoring(state, config, shared_common, shared_category),
-        ),
+        scoring=ScoringAdapter(config, state, shared_common, shared_category),
         summarize=TrimSummarize(MockSummarize(), config),
         secrets=EnvSecrets(),
         app_state=app_state,

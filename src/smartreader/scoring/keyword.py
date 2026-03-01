@@ -10,8 +10,6 @@ from . import Scoring
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_COMMON_WEIGHT = 1.0
-_DEFAULT_CATEGORY_WEIGHT = 1.5
 _DEFAULT_UPVOTE_POWER = 1.5
 _DEFAULT_DOWNVOTE_POWER = -1.0
 
@@ -36,13 +34,15 @@ class BaseKeywordScoring(Scoring):
         config: Config,
         common_kw: dict[str, float] | None = None,
         category_kw: dict[str, dict[str, float]] | None = None,
+        common_weight: float = 1.0,
+        category_weight: float = 1.5,
     ) -> None:
         self._state = state
         self._config = config
         self._common_kw: dict[str, float] = common_kw if common_kw is not None else {}
         self._category_kw: dict[str, dict[str, float]] = category_kw if category_kw is not None else {}
-        self._common_weight = _DEFAULT_COMMON_WEIGHT
-        self._category_weight = _DEFAULT_CATEGORY_WEIGHT
+        self._common_weight = common_weight
+        self._category_weight = category_weight
         self._upvote_power = _DEFAULT_UPVOTE_POWER
         self._downvote_power = _DEFAULT_DOWNVOTE_POWER
         self._skip: set[str] = set()
@@ -62,10 +62,7 @@ class BaseKeywordScoring(Scoring):
         if ok and isinstance(val, dict):
             self._upvote_power = float(val.get("upvote_power", _DEFAULT_UPVOTE_POWER))
             self._downvote_power = float(val.get("downvote_power", _DEFAULT_DOWNVOTE_POWER))
-            kw_cfg = val.get("keyword", {})
-            self._common_weight = float(kw_cfg.get("common_weight", _DEFAULT_COMMON_WEIGHT))
-            self._category_weight = float(kw_cfg.get("category_weight", _DEFAULT_CATEGORY_WEIGHT))
-            self._skip = set(kw_cfg.get("skip", []))
+            self._skip = set(val.get("skip", []))
             logger.info(
                 "keyword scoring weights: common=%.2f category=%.2f "
                 "upvote=%.2f downvote=%.2f skip=%d word(s)",
@@ -159,7 +156,3 @@ class L2KeywordScoring(BaseKeywordScoring):
 
     def _get_text(self, content: Content) -> str:
         return f"{content.title} {content.summary or content.body}"
-
-
-# Backwards-compatible alias used in tests
-KeywordScoring = L1KeywordScoring

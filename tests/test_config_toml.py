@@ -55,8 +55,9 @@ def test_load_defaults_contain_scoring_section(tmp_path: Path) -> None:
 
     ok, err, val = read(config, "scoring")
     assert ok, err
-    assert "top_n" in val
-    assert "keyword" in val
+    assert "top_n_l1" in val
+    assert "l1" in val
+    assert "skip" in val
 
 
 def test_load_reads_existing_toml(tmp_path: Path) -> None:

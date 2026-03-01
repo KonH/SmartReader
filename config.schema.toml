@@ -4,10 +4,26 @@
 [scoring]
 top_n_l1 = 10         # Max articles passed to the summarizer after L1 keyword scoring
 top_n_l2 = 5          # Max articles shown to the user after L2 scoring (post-summarize)
+upvote_power = 1.5    # Interest delta applied on upvote
+downvote_power = -1.0 # Interest delta applied on downvote
+skip = []             # Stop-words excluded from all keyword scorers; editable at runtime via 'skip'
 
-[scoring.keyword]
+# L1 scorers — run on raw content before summarization (fast pass)
+[[scoring.l1]]
+type = "keyword"
 common_weight = 1.0   # Weight applied to global keyword interests
 category_weight = 1.5 # Weight applied to per-category interests
+
+# Optional noise scorer — adds randomness to shuffle results
+# [[scoring.l1]]
+# type = "noise"
+# noise_factor = 0.5  # score += random() * noise_factor
+
+# L2 scorers — run on summarized content for final ranking
+[[scoring.l2]]
+type = "keyword"
+common_weight = 1.0
+category_weight = 1.5
 
 # ── Summarizer ────────────────────────────────────────────────────────────────
 # [summarize.trim] trims the summary produced by the active Summarize implementation.

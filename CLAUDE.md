@@ -34,7 +34,7 @@ Six modules coordinated by a **Main Coordinator**. All async operations use a un
 | Input | Fetch content | RSS and/or Telegram (any of) |
 | Config | App config | TOML file |
 | State | Persistent state | SQLite (optionally wrapped with Encryption) |
-| Scoring | Rank content | KeywordScoring |
+| Scoring | Rank content | Multi-scorer pipeline (keyword, noise, …) via ScoringAdapter |
 | Summarize | Summarize content | OpenAI API |
 | Secrets | Credential access | Environment variables |
 
@@ -89,11 +89,19 @@ lines = 10            # max lines to keep
 [scoring]
 top_n_l1 = 10         # max articles passed to summarizer after L1 scoring
 top_n_l2 = 5          # max articles shown to user after L2 scoring
+upvote_power = 1.5
+downvote_power = -1.0
+skip = []             # stop-words excluded from all keyword scorers; editable at runtime via 'skip' command
 
-[scoring.keyword]
-common_weight = <float>
-category_weight = <float>
-skip = []             # stop-words excluded from keyword matching; editable at runtime via 'skip' command
+[[scoring.l1]]        # one or more scorer entries (array-of-tables)
+type = "keyword"      # "keyword" | "noise"
+common_weight = 1.0
+category_weight = 1.5
+
+[[scoring.l2]]
+type = "keyword"
+common_weight = 1.0
+category_weight = 1.5
 
 [sources]
 [[sources.<name>]]
@@ -141,11 +149,14 @@ Secrets:   initialize(params, cb) | readValue(key, cb<string>)
 - **`UIParams.live_feedback`**: optional `LiveFeedbackHandler` passed to `UI.initialize`; used by non-blocking UIs (e.g. `TelegramUI`) to push async vote feedback directly to the coordinator without waiting for `show_content_list` to return.
 - **`config.schema.toml`**: user-facing reference file in the project root — update it alongside CLAUDE.md whenever config sections are added or changed. Also update `.env.example` whenever new secrets are introduced.
 - **`AppState` wrapper**: `state/app_state.py` wraps `State` with typed access — `read_all_typed(cb<AppStateData>)` parses raw keys into sorted, typed structures; `remove_keyword(word, cb)` removes a word from both interest keys. Instantiated in `__main__.py` and passed to `Coordinator`.
-- **`TriggerParams.mode`**: `"ask" | "add" | "logs" | "state" | "skip"`. `"skip"` carries `skip_word: str` and triggers the skip-word flow (add to `scoring.keyword.skip` config list, remove from state interests, restart).
+- **`TriggerParams.mode`**: `"ask" | "add" | "logs" | "state" | "skip"`. `"skip"` carries `skip_word: str` and triggers the skip-word flow (add to `scoring.skip` config list, remove from state interests, restart).
 - **Interactive Telegram flows**: multi-step conversations (add source, skip word) block `wait_trigger` using `_add_step_queue`; a boolean flag (`_in_add_mode`, `_in_skip_mode`) prevents trigger commands from interrupting. Cancel buttons put `None` on the queue; text messages put the typed value.
 - **State file path**: `SQLiteState` accepts `path: Path`. `__main__.py` reads `sys.argv[1]` as the state path (default `state.sqlite`). `run.sh` forwards `$@` to Python; `retry_run.sh` forwards `$@` to `run.sh`.
 - **Telegram content messages use HTML mode**: `show_content_list` builds messages with `parse_mode="html"`. Title and body go through `_md_to_html` (HTML-escapes `&<>`, then converts `[text](url)` → `<a href>`, `**bold**` → `<b>`, `` `code` `` → `<code>`). Menu/prompt messages keep `parse_mode="md"`. Telethon parses Markdown client-side before sending, so `_escape_md` backslash sequences appear literally — HTML mode is the correct choice for arbitrary article text.
-- **Pipeline steps with callbacks must be iterative, not recursive**: All coordinator steps that loop over items calling synchronous callbacks (`_score_l1`, `_score_l2`, `_summarize_all`) use a plain `for` loop — callbacks fire synchronously and mutate items in place or append to a local list. Recursive designs hit Python's call stack limit. Never introduce a recursive pipeline step.
+- **Pipeline steps with callbacks must be iterative, not recursive**: All coordinator steps that loop over items calling synchronous callbacks (`_score_l1`, `_score_l2`, `_summarize_all`) use a plain `for` loop — callbacks fire synchronously and mutate items in place or append to a local list. Recursive designs hit Python's call stack limit. Never introduce a recursive pipeline step. Exception: chaining over a small, fixed-size list (e.g. 2–3 scorer implementations) is safe and acceptable.
+- **`ScoringAdapter` constructor**: `ScoringAdapter(config, state, shared_common, shared_category)`. It reads `scoring.l1` / `scoring.l2` arrays from config at `initialize()` time and builds scorer instances internally — `__main__.py` does not instantiate individual scorers. Scorer type is resolved by `type` field: `"keyword"` → `L1/L2KeywordScoring`, `"noise"` → `NoiseScoring`. Per-scorer weights (`common_weight`, `category_weight`) come from the entry dict, not from config reads inside the scorer. `skip` is global (read from top-level `scoring` dict by each keyword scorer).
+- **`NoiseScoring`** (`scoring/noise.py`): adds `random() * noise_factor` to score; useful for diversifying results. `noise_factor` comes from the scorer entry dict.
+- **Per-scorer logging in adapter**: format is `"L1 (keyword) scored 'id': 0.500"` — stage ("L1"/"L2") + short label from `_scorer_label()` (uses `isinstance` checks, not class-name string manipulation).
 - **Pipeline must always reach `show_content_list`**: Every code path (including "no sources", "no new content", "empty after scoring") must call `self._show([])` so the UI sends user feedback and its action menu. Returning early without calling `_show` leaves the user with no response and no menu.
 
 ## Reference Docs
