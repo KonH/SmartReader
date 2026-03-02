@@ -2,11 +2,13 @@ import logging
 
 from .._types import Callback, ScoreCallback
 from ..config import Config
+from ..secrets import Secrets
 from ..state import State
 from ..types.content import Content
 from . import Scoring
 from .keyword import L1KeywordScoring, L2KeywordScoring
 from .noise import NoiseScoring
+from .openai_scorer import OpenAIScoring
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +39,13 @@ class ScoringAdapter(Scoring):
         state: State,
         shared_common: dict[str, float],
         shared_category: dict[str, dict[str, float]],
+        secrets: Secrets | None = None,
     ) -> None:
         self._config = config
         self._state = state
         self._shared_common = shared_common
         self._shared_category = shared_category
+        self._secrets = secrets
         self._l1: list[Scoring] = []
         self._l2: list[Scoring] = []
 
@@ -76,6 +80,11 @@ class ScoringAdapter(Scoring):
             elif t == "noise":
                 noise_factor = float(entry.get("noise_factor", 1.0))
                 scorers.append(NoiseScoring(noise_factor))
+            elif t == "openai":
+                if self._secrets is None:
+                    logger.warning("openai scorer requires secrets; skipping (no secrets provided)")
+                else:
+                    scorers.append(OpenAIScoring(self._state, self._secrets, entry))
             else:
                 logger.warning("unknown scorer type %r in %s, skipping", t, stage)
         return scorers
@@ -142,4 +151,6 @@ def _scorer_label(scorer: Scoring) -> str:
         return "keyword"
     if isinstance(scorer, NoiseScoring):
         return "noise"
+    if isinstance(scorer, OpenAIScoring):
+        return "openai"
     return type(scorer).__name__

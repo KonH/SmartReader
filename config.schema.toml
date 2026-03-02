@@ -19,6 +19,16 @@ category_weight = 1.5 # Weight applied to per-category interests
 # type = "noise"
 # noise_factor = 0.5  # score += random() * noise_factor
 
+# Optional OpenAI scorer — uses an LLM to judge article relevance.
+# Requires OPENAI_API_KEY environment variable.
+# Accumulates feedback (upvotes/downvotes) and summarizes user preferences
+# at next startup to improve future scoring.
+# [[scoring.l1]]
+# type         = "openai"
+# score_factor = 1.0           # score range: [-score_factor, +score_factor]
+# model        = "gpt-4o-mini" # OpenAI model ID
+# prompt       = "..."         # optional: override default scoring instructions
+
 # L2 scorers — run on summarized content for final ranking
 [[scoring.l2]]
 type = "keyword"

@@ -74,7 +74,8 @@ def main() -> None:
     shared_common: dict[str, float] = {}
     shared_category: dict[str, dict[str, float]] = {}
 
-    scoring = ScoringAdapter(config, state, shared_common, shared_category)
+    secrets = EnvSecrets()
+    scoring = ScoringAdapter(config, state, shared_common, shared_category, secrets=secrets)
     summarize = TrimSummarize(MockSummarize(), config)
     source_reader = SourceReader(
         config=config,
@@ -106,7 +107,7 @@ def main() -> None:
         state=state,
         scoring=scoring,
         summarize=summarize,
-        secrets=EnvSecrets(),
+        secrets=secrets,
         app_state=app_state,
     )
 
