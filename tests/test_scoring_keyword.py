@@ -252,4 +252,4 @@ def test_adapter_update_score_updates_shared_interests() -> None:
     written = state.written.get("common_keyword_interests", {})
     # Words from both L1 (body) and L2 (summary) should be in interests
     assert "python" in written
-    assert "learning" in written or "neural" in written or "networks" in written
+    assert any(w in written for w in ("learning", "learn", "neural", "network", "networks"))

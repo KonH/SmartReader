@@ -2,6 +2,9 @@ import logging
 import re
 from abc import abstractmethod
 
+import pymorphy3
+import simplemma
+
 from .._types import Callback, ScoreCallback
 from ..config import Config
 from ..state import State
@@ -13,10 +16,24 @@ logger = logging.getLogger(__name__)
 _DEFAULT_UPVOTE_POWER = 1.5
 _DEFAULT_DOWNVOTE_POWER = -1.0
 
+_morph = pymorphy3.MorphAnalyzer()
+
 
 def _tokenize(text: str, skip: set[str]) -> list[str]:
-    """Lower-case alphabetic tokens, 2+ chars, not in skip set."""
-    return [w for w in re.findall(r'[a-z]{2,}', text.lower()) if w not in skip]
+    """Unicode-aware alphabetic tokens (2+ chars), lemmatized, not in skip."""
+    result = []
+    for w in re.findall(r'[^\W\d_]{2,}', text.lower(), re.UNICODE):
+        if w in skip:
+            continue
+        if any('\u0400' <= c <= '\u04ff' for c in w):
+            parsed = _morph.parse(w)
+            lemma = parsed[0].normal_form if parsed else w
+        else:
+            lemma = simplemma.lemmatize(w, ('en', 'hbs')) if len(w) >= 4 else w
+        lemma = lemma.lower()
+        if lemma not in skip:
+            result.append(lemma)
+    return result
 
 
 class BaseKeywordScoring(Scoring):

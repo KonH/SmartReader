@@ -34,7 +34,7 @@ def render_content_table(content: list[Content], console: Console) -> None:
         score_str = f"{item.score:.2f}" if item.score is not None else "—"
         date_str = datetime.fromtimestamp(item.published_ts).strftime("%b %d %H:%M")
         text = item.summary or item.body
-        summary_str = text[:200].rstrip() + "…" if len(text) > 200 else text
+        summary_str = text
         table.add_row(str(i), date_str, score_str, item.title, item.source_id, summary_str)
 
     console.print(table)

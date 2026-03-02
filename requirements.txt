@@ -3,3 +3,5 @@ tomli-w>=1.0
 pytest>=8.0
 feedparser>=6.0
 telethon>=1.34
+simplemma>=0.9
+pymorphy3>=2.0
