@@ -330,6 +330,94 @@ class SkipWordCommand(UICommand, ABC):
         sys.exit(0)
 
 
+# ── SetPromptCommand ───────────────────────────────────────────────────────────
+
+class SetPromptCommand(UICommand, ABC):
+    """Write scoring.openai_prompt to config and restart."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _read_current_prompt(self) -> str:
+        assert self._app_state.config is not None
+        result: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            result[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring = result[0] if isinstance(result[0], dict) else {}
+        return str(scoring.get("openai_prompt", ""))  # type: ignore[union-attr]
+
+    def _set_prompt_and_restart(self, prompt: str) -> None:
+        assert self._app_state.config is not None
+        scoring_val: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            scoring_val[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring: dict = scoring_val[0] if isinstance(scoring_val[0], dict) else {}  # type: ignore[assignment]
+        scoring["openai_prompt"] = prompt
+
+        def on_written(ok: bool, err: str) -> None:
+            if not ok:
+                logger.error("set_prompt: write_value error: %s", err)
+            assert self._app_state.config is not None
+            self._app_state.config.save(
+                lambda ok2, err2: logger.error("set_prompt: config save error: %s", err2) if not ok2 else None
+            )
+            logger.info("openai_prompt updated, restarting")
+            sys.exit(0)
+
+        self._app_state.config.write_value("scoring", scoring, on_written)
+
+
+# ── SetInterestsPromptCommand ──────────────────────────────────────────────────
+
+class SetInterestsPromptCommand(UICommand, ABC):
+    """Write scoring.openai_interests_prompt to config and restart."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _read_current_interests_prompt(self) -> str:
+        assert self._app_state.config is not None
+        result: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            result[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring = result[0] if isinstance(result[0], dict) else {}
+        return str(scoring.get("openai_interests_prompt", ""))  # type: ignore[union-attr]
+
+    def _set_interests_prompt_and_restart(self, prompt: str) -> None:
+        assert self._app_state.config is not None
+        scoring_val: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            scoring_val[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring: dict = scoring_val[0] if isinstance(scoring_val[0], dict) else {}  # type: ignore[assignment]
+        scoring["openai_interests_prompt"] = prompt
+
+        def on_written(ok: bool, err: str) -> None:
+            if not ok:
+                logger.error("set_interests_prompt: write_value error: %s", err)
+            assert self._app_state.config is not None
+            self._app_state.config.save(
+                lambda ok2, err2: logger.error("set_interests_prompt: config save error: %s", err2) if not ok2 else None
+            )
+            logger.info("openai_interests_prompt updated, restarting")
+            sys.exit(0)
+
+        self._app_state.config.write_value("scoring", scoring, on_written)
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _filter_by_category(sources_val: dict, category: str | None) -> list[str]:

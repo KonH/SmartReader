@@ -17,6 +17,16 @@ You are a news relevance scorer. Given an article, output a single number betwee
   -1.0 = irrelevant, advertisement, spam, or low-quality content
 Reply with ONLY the number, no explanation."""
 
+_DEFAULT_INTERESTS_PROMPT = """\
+You maintain a short user preference profile for a news reader.
+Current profile: {current_profile}
+
+Recent feedback actions:
+{actions_text}
+
+Write an updated profile in 3-5 short sentences describing what this user likes and dislikes.
+Be concise and specific. Reply with ONLY the profile text."""
+
 _SUMMARY_KEY = "openai_scoring_summary"
 _PENDING_KEY = "openai_scoring_pending_actions"
 
@@ -26,6 +36,7 @@ class OpenAIScoring(Scoring):
         self._state = state
         self._secrets = secrets
         self._prompt: str = entry.get("prompt", _DEFAULT_PROMPT)
+        self._interests_prompt: str = entry.get("interests_prompt", _DEFAULT_INTERESTS_PROMPT)
         self._score_factor: float = float(entry.get("score_factor", 1.0))
         self._model: str = entry.get("model", "gpt-4o-mini")
         self._summary: str = ""
@@ -72,13 +83,7 @@ class OpenAIScoring(Scoring):
         actions_text = "\n".join(lines)
 
         current = self._summary or "none"
-        prompt = (
-            f"You maintain a short user preference profile for a news reader.\n"
-            f"Current profile: {current}\n\n"
-            f"Recent feedback actions:\n{actions_text}\n\n"
-            f"Write an updated profile in 3-5 short sentences describing what this user likes and dislikes.\n"
-            f"Be concise and specific. Reply with ONLY the profile text."
-        )
+        prompt = self._interests_prompt.format(current_profile=current, actions_text=actions_text)
 
         try:
             assert self._client is not None

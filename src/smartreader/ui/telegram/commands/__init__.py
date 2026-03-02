@@ -1,4 +1,6 @@
 from .add_source import TelegramAddSourceCommand
+from .set_interests_prompt import TelegramSetInterestsPromptCommand
+from .set_prompt import TelegramSetPromptCommand
 from .show_content import TelegramShowContentCommand
 from .show_logs import TelegramShowLogsCommand
 from .show_state import TelegramShowStateCommand
@@ -10,4 +12,6 @@ __all__ = [
     "TelegramShowLogsCommand",
     "TelegramShowStateCommand",
     "TelegramSkipWordCommand",
+    "TelegramSetPromptCommand",
+    "TelegramSetInterestsPromptCommand",
 ]

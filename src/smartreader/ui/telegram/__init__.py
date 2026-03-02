@@ -17,6 +17,8 @@ from ..command import UICommand
 from ..commands import ShowContentCommand
 from .commands import (
     TelegramAddSourceCommand,
+    TelegramSetInterestsPromptCommand,
+    TelegramSetPromptCommand,
     TelegramShowContentCommand,
     TelegramShowLogsCommand,
     TelegramShowStateCommand,
@@ -45,6 +47,8 @@ _COMMAND_TYPES: list[type[UICommand]] = [
     TelegramShowLogsCommand,
     TelegramShowStateCommand,
     TelegramSkipWordCommand,
+    TelegramSetPromptCommand,
+    TelegramSetInterestsPromptCommand,
 ]
 
 _MODE_TO_TITLE = {
@@ -53,6 +57,8 @@ _MODE_TO_TITLE = {
     "logs": "logs",
     "state": "state",
     "skip": "skip",
+    "prompt": "prompt",
+    "interests": "interests",
 }
 
 

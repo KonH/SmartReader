@@ -7,6 +7,7 @@ top_n_l2 = 5          # Max articles shown to the user after L2 scoring (post-su
 upvote_power = 1.5    # Interest delta applied on upvote
 downvote_power = -1.0 # Interest delta applied on downvote
 skip = []             # Stop-words excluded from all keyword scorers; editable at runtime via 'skip'
+# openai_prompt = "..."  # Default prompt for all OpenAI scorers; editable at runtime via 'prompt'
 
 # L1 scorers — run on raw content before summarization (fast pass)
 [[scoring.l1]]

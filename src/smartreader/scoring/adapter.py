@@ -57,12 +57,14 @@ class ScoringAdapter(Scoring):
 
     def _on_config(self, ok: bool, err: str, val: dict, callback: Callback) -> None:
         cfg = val if isinstance(val, dict) else {}
-        self._l1 = self._build_scorers(cfg.get("l1", []), "l1")
-        self._l2 = self._build_scorers(cfg.get("l2", []), "l2")
+        global_prompt = str(cfg["openai_prompt"]) if isinstance(cfg.get("openai_prompt"), str) else ""
+        global_interests_prompt = str(cfg["openai_interests_prompt"]) if isinstance(cfg.get("openai_interests_prompt"), str) else ""
+        self._l1 = self._build_scorers(cfg.get("l1", []), "l1", global_prompt, global_interests_prompt)
+        self._l2 = self._build_scorers(cfg.get("l2", []), "l2", global_prompt, global_interests_prompt)
         all_scorers = self._l1 + self._l2
         self._init_scorers(all_scorers, 0, callback)
 
-    def _build_scorers(self, entries: list, stage: str) -> list[Scoring]:
+    def _build_scorers(self, entries: list, stage: str, global_prompt: str = "", global_interests_prompt: str = "") -> list[Scoring]:
         scorers: list[Scoring] = []
         for entry in entries:
             if not isinstance(entry, dict):
@@ -84,7 +86,12 @@ class ScoringAdapter(Scoring):
                 if self._secrets is None:
                     logger.warning("openai scorer requires secrets; skipping (no secrets provided)")
                 else:
-                    scorers.append(OpenAIScoring(self._state, self._secrets, entry))
+                    effective_entry = dict(entry)
+                    if "prompt" not in effective_entry and global_prompt:
+                        effective_entry["prompt"] = global_prompt
+                    if "interests_prompt" not in effective_entry and global_interests_prompt:
+                        effective_entry["interests_prompt"] = global_interests_prompt
+                    scorers.append(OpenAIScoring(self._state, self._secrets, effective_entry))
             else:
                 logger.warning("unknown scorer type %r in %s, skipping", t, stage)
         return scorers
