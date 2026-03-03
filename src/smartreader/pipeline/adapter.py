@@ -73,12 +73,18 @@ def build_pipeline(
     summarize: "Summarize | None" = None,
     global_prompt: str = "",
     global_interests_prompt: str = "",
+    global_merge_prompt: str = "",
+    global_cluster_prompt: str = "",
+    global_summarize_prompt: str = "",
 ) -> PipelineAdapter:
     """Build a PipelineAdapter from a list of stage entry dicts."""
     from .stages.keyword_score import KeywordScoreStage
+    from .stages.merge_content import MergeContentStage
     from .stages.openai_score import OpenAIScoreStage
+    from .stages.openai_summarize import OpenAISummarizeStage
     from .stages.shuffle import ShuffleStage
     from .stages.summarize import SummarizeStage
+    from .stages.threshold import ThresholdStage
     from .stages.top_n import TopNStage
     from .stages.trim import TrimStage
 
@@ -116,6 +122,11 @@ def build_pipeline(
                 logger.warning("summarize stage: no Summarize impl provided; skipping")
             else:
                 stages.append(SummarizeStage(summarize))
+        elif t == "openai_summarize":
+            if secrets is None:
+                logger.warning("openai_summarize stage requires secrets; skipping (no secrets provided)")
+            else:
+                stages.append(OpenAISummarizeStage(secrets, entry, global_summarize_prompt))
         elif t == "trim":
             lines = int(entry.get("lines", 0))
             raw_chars = entry.get("chars")
@@ -124,6 +135,14 @@ def build_pipeline(
         elif t == "top_n":
             n = int(entry.get("n", 10))
             stages.append(TopNStage(n))
+        elif t == "threshold":
+            threshold = float(entry.get("threshold", 0.0))
+            stages.append(ThresholdStage(threshold))
+        elif t == "merge_content":
+            if secrets is None:
+                logger.warning("merge_content stage requires secrets; skipping (no secrets provided)")
+            else:
+                stages.append(MergeContentStage(state, secrets, entry, global_merge_prompt, global_cluster_prompt))
         else:
             logger.warning("unknown pipeline stage type %r; skipping", t)
 

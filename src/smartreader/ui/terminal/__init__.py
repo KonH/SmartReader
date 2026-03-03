@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import select
+import sys
 from typing import TYPE_CHECKING
 
 from rich.console import Console
@@ -13,8 +15,8 @@ from ..command import UICommand
 from ..commands import ShowContentCommand
 from .commands import (
     TerminalAddSourceCommand,
-    TerminalSetInterestsPromptCommand,
-    TerminalSetPromptCommand,
+    TerminalSetCronCommand,
+    TerminalSetPromptGroupCommand,
     TerminalShowContentCommand,
     TerminalShowLogsCommand,
     TerminalShowStateCommand,
@@ -34,8 +36,8 @@ _COMMAND_TYPES: list[type[UICommand]] = [
     TerminalShowLogsCommand,
     TerminalShowStateCommand,
     TerminalSkipWordCommand,
-    TerminalSetPromptCommand,
-    TerminalSetInterestsPromptCommand,
+    TerminalSetPromptGroupCommand,
+    TerminalSetCronCommand,
 ]
 
 
@@ -67,6 +69,18 @@ class TerminalUI(UI):
 
         self._running = True
         while self._running:
+            # Fire any pending scheduled trigger before asking for input
+            if not self._shared.trigger_queue.empty():
+                self._shared.trigger_queue.get_nowait()
+                logger.info("terminal_ui: scheduled trigger received, running show")
+                self._shared.console.print("\n[bold cyan]Scheduled show starting…[/bold cyan]")
+                if app_state is not None:
+                    app_state.trigger_category = None
+                if show_cmd is not None:
+                    show_cmd.execute()
+                    logger.info("terminal_ui: scheduled show complete")
+                continue
+
             # Refresh categories from config
             categories: list[str] = []
             if app_state is not None and app_state.config is not None:
@@ -84,14 +98,20 @@ class TerminalUI(UI):
             titles = " / ".join(
                 cmd.control_title for cmd in commands if cmd.control_title != "show"
             )
+            prompt = (
+                f"\n[bold]Press Enter to run[/bold], "
+                f"[dim]'{titles}' or 'skip <word>'[/dim] "
+                f"[dim](Ctrl+C to quit)[/dim]: "
+            )
+
             try:
-                raw = self._shared.console.input(
-                    f"\n[bold]Press Enter to run[/bold], "
-                    f"[dim]'{titles}' or 'skip <word>'[/dim] "
-                    f"[dim](Ctrl+C to quit)[/dim]: "
-                ).strip().lower()
+                raw_line = _read_line_or_trigger(self._shared, prompt)
             except EOFError:
                 break
+            if raw_line is None:
+                # Scheduled trigger arrived while waiting — loop will handle it
+                continue
+            raw = raw_line.strip().lower()
 
             if not raw:
                 # Category selection then show
@@ -117,6 +137,26 @@ class TerminalUI(UI):
     def terminate(self) -> None:
         self._running = False
         self._shared.console.print("\n[dim]Bye.[/dim]")
+
+
+def _read_line_or_trigger(s: TerminalSharedUIState, prompt: str, poll: float = 5.0) -> str | None:
+    """Print *prompt* (Rich markup) and read a line from stdin.
+
+    Polls every *poll* seconds so that a scheduled trigger in *s.trigger_queue*
+    can interrupt the wait.  Returns the stripped line on input, or ``None``
+    when a trigger fires.  Raises ``EOFError`` on EOF / Ctrl-D.
+    """
+    s.console.print(prompt, end="")
+    sys.stdout.flush()
+    while True:
+        readable, _, _ = select.select([sys.stdin], [], [], poll)
+        if readable:
+            line = sys.stdin.readline()
+            if not line:
+                raise EOFError
+            return line.rstrip("\n")
+        if not s.trigger_queue.empty():
+            return None
 
 
 def _pick_category(categories: list[str], console: Console) -> str | None:

@@ -17,8 +17,8 @@ from ..command import UICommand
 from ..commands import ShowContentCommand
 from .commands import (
     TelegramAddSourceCommand,
-    TelegramSetInterestsPromptCommand,
-    TelegramSetPromptCommand,
+    TelegramSetCronCommand,
+    TelegramSetPromptGroupCommand,
     TelegramShowContentCommand,
     TelegramShowLogsCommand,
     TelegramShowStateCommand,
@@ -47,18 +47,19 @@ _COMMAND_TYPES: list[type[UICommand]] = [
     TelegramShowLogsCommand,
     TelegramShowStateCommand,
     TelegramSkipWordCommand,
-    TelegramSetPromptCommand,
-    TelegramSetInterestsPromptCommand,
+    TelegramSetPromptGroupCommand,
+    TelegramSetCronCommand,
 ]
 
 _MODE_TO_TITLE = {
-    "ask": "show",
+    "ask": "show",   # show with category selection
+    "run": "show",   # show without category selection (used by scheduled triggers)
     "add": "add",
     "logs": "logs",
     "state": "state",
     "skip": "skip",
     "prompt": "prompt",
-    "interests": "interests",
+    "cron": "cron",
 }
 
 
@@ -104,7 +105,8 @@ class TelegramUI(UI):
                 categories = cats_result[0]
                 app_state.categories = categories
 
-            logger.info("telegram_ui: waiting for trigger")
+            logger.info("telegram_ui: waiting for trigger (state: in_add=%s in_skip=%s in_prompt=%s in_group=%s in_cron=%s waiting_cat=%s)",
+                        s.in_add_mode, s.in_skip_mode, s.in_set_prompt_mode, s.in_group_mode, s.in_set_cron_mode, s.waiting_for_category)
             item = s.trigger_queue.get()
             sender_id: int = item["sender_id"]
             s.current_sender_id = sender_id
@@ -112,6 +114,8 @@ class TelegramUI(UI):
 
             title = _MODE_TO_TITLE.get(mode, "show")
             cmd = cmd_by_title.get(title)
+            logger.info("telegram_ui: got trigger sender_id=%s mode=%r -> title=%r cmd=%s",
+                        sender_id, mode, title, type(cmd).__name__ if cmd else None)
             if cmd is None:
                 logger.warning("telegram_ui: no command for mode=%s", mode)
                 send_action_menu(s, sender_id)
@@ -132,11 +136,15 @@ class TelegramUI(UI):
 
                 if app_state is not None:
                     app_state.trigger_category = cat
+                logger.info("telegram_ui: executing %s (category=%r)", type(cmd).__name__, cat)
                 cmd.execute()
+                logger.info("telegram_ui: %s.execute() returned", type(cmd).__name__)
             else:
                 if app_state is not None:
                     app_state.trigger_category = None
+                logger.info("telegram_ui: executing %s (no category selection)", type(cmd).__name__)
                 cmd.execute()
+                logger.info("telegram_ui: %s.execute() returned", type(cmd).__name__)
 
     def terminate(self) -> None:
         s = self._shared

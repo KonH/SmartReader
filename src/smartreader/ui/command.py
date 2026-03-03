@@ -25,3 +25,13 @@ class UICommand(ABC):
     def execute(self) -> None:
         """Run the command.  Self-contained, synchronous from the caller's view."""
         ...
+
+
+class UICommandGroup(UICommand, ABC):
+    """A UICommand that presents child commands as a sub-menu."""
+
+    @property
+    @abstractmethod
+    def subcommands(self) -> list[UICommand]:
+        """Child commands offered in the sub-menu."""
+        ...

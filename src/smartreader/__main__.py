@@ -13,6 +13,7 @@ from .input.source_reader import SourceReader
 from .input.telegram import TelegramReader
 from .main import Coordinator
 from .pipeline.adapter import build_pipeline
+from .scheduler import CronScheduler
 from .secrets.env import EnvSecrets
 from .state.app_state import AppState
 from .state.sqlite import SQLiteState
@@ -21,8 +22,8 @@ from .ui import UI
 from .ui.command import UICommand
 from .ui.commands import (
     AddSourceCommand,
-    SetInterestsPromptCommand,
-    SetPromptCommand,
+    SetCronCommand,
+    SetPromptGroupCommand,
     ShowContentCommand,
     ShowLogsCommand,
     ShowStateCommand,
@@ -44,8 +45,8 @@ _KNOWN_COMMAND_TYPES: list[type[UICommand]] = [
     ShowLogsCommand,
     ShowStateCommand,
     SkipWordCommand,
-    SetPromptCommand,
-    SetInterestsPromptCommand,
+    SetPromptGroupCommand,
+    SetCronCommand,
 ]
 
 _DEFAULT_PIPELINE: list[dict] = [
@@ -69,14 +70,17 @@ def main() -> None:
     config = TOMLConfig()
     state = SQLiteState(path=state_path)
     secrets = EnvSecrets()
-    summarize = MockSummarize()
 
     scoring_cfg = raw_cfg.get("scoring", {})
+
     pipeline = build_pipeline(
         raw_cfg.get("pipeline", _DEFAULT_PIPELINE),
-        state, config, secrets, summarize,
+        state, config, secrets, MockSummarize(),
         global_prompt=scoring_cfg.get("openai_prompt", ""),
         global_interests_prompt=scoring_cfg.get("openai_interests_prompt", ""),
+        global_merge_prompt=scoring_cfg.get("openai_merge_prompt", ""),
+        global_cluster_prompt=scoring_cfg.get("openai_cluster_prompt", ""),
+        global_summarize_prompt=scoring_cfg.get("openai_summarize_prompt", ""),
     )
 
     source_reader = SourceReader(
@@ -121,6 +125,32 @@ def main() -> None:
         if not ok:
             logger.error("init failed: %s", err)
             sys.exit(1)
+        cron_expr: str = raw_cfg.get("common", {}).get("cron_schedule", "")
+        if cron_expr:
+            if isinstance(shared, TelegramSharedUIState):
+                tg = shared
+
+                def _tg_cron_callback() -> None:
+                    from .ui.telegram.common import load_last_chat
+                    last = load_last_chat()
+                    logger.info("cron: _tg_cron_callback fired, last_chat=%s", last)
+                    if last is None:
+                        logger.warning("cron: no saved chat id — trigger skipped (send any message to the bot first)")
+                        return
+                    logger.info("cron: putting trigger on queue for chat_id=%s mode=run", last)
+                    tg.trigger_queue.put({"sender_id": last, "mode": "run"})
+                    logger.info("cron: trigger queued (queue size now ~%d)", tg.trigger_queue.qsize())
+
+                CronScheduler(cron_expr, _tg_cron_callback).start()
+            elif isinstance(shared, TerminalSharedUIState):
+                term = shared
+
+                def _term_cron_callback() -> None:
+                    logger.info("cron: _term_cron_callback fired, queuing terminal trigger")
+                    term.trigger_queue.put(True)
+                    logger.info("cron: terminal trigger queued")
+
+                CronScheduler(cron_expr, _term_cron_callback).start()
         coordinator.run(commands)
 
     try:

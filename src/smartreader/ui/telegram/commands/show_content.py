@@ -33,11 +33,22 @@ class TelegramShowContentCommand(ShowContentCommand):
         else:
             for item in items:
                 body = md_to_html(item.summary or item.body or "")
-                if item.url:
-                    title_part = f'<a href="{item.url}">{md_to_html(item.title)}</a>'
+                if item.related_ids:
+                    title_part = f"🔀 {md_to_html(item.title)}"
+                    sources_lines = []
+                    for related in item.related_contents:
+                        if related.url:
+                            sources_lines.append(f'• <a href="{related.url}">{md_to_html(related.title)}</a> [{related.source_id}]')
+                        else:
+                            sources_lines.append(f"• {md_to_html(related.title)} [{related.source_id}]")
+                    sources_block = "\n".join(sources_lines)
+                    msg_text = f"<b>{title_part}</b>\n📌 Sources:\n{sources_block}\n\n{body}"
                 else:
-                    title_part = md_to_html(item.title)
-                msg_text = f"<code>[{item.source_id}]</code> {title_part}\n\n{body}"
+                    if item.url:
+                        title_part = f'<a href="{item.url}">{md_to_html(item.title)}</a>'
+                    else:
+                        title_part = md_to_html(item.title)
+                    msg_text = f"<code>[{item.source_id}]</code> {title_part}\n\n{body}"
                 buttons = [[
                     ("inline", self._tg.upvote_text, f"vote:up:{item.id}"),
                     ("inline", self._tg.downvote_text, f"vote:down:{item.id}"),

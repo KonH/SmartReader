@@ -32,6 +32,8 @@ class TelegramSharedUIState(SharedUIState):
         self.in_add_mode: bool = False
         self.in_skip_mode: bool = False
         self.in_set_prompt_mode: bool = False
+        self.in_group_mode: bool = False
+        self.in_set_cron_mode: bool = False
         self.waiting_for_category: bool = False
         self.controller_usernames: list[str] = []
         self.upvote_text: str = "👍"

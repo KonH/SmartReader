@@ -8,10 +8,10 @@ from __future__ import annotations
 import logging
 import sys
 import time
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from ..command import SharedUIState, UICommand
+from ..command import SharedUIState, UICommand, UICommandGroup
 from ...types.app_state import AppStateData
 from ...types.content import Content
 from ...types.params import NewSourceParams
@@ -148,6 +148,12 @@ class ShowContentCommand(UICommand, ABC):
                     logger.error("update_score error for %s: %s", _id, err) if not ok else None
                 ),
             )
+            # Propagate to original items if merged
+            for related in content.related_contents:
+                self._app_state.pipeline.update_score(
+                    related, upvote,
+                    lambda ok, err: None,
+                )
 
 
 # ── AddSourceCommand ───────────────────────────────────────────────────────────
@@ -353,6 +359,249 @@ class SetInterestsPromptCommand(UICommand, ABC):
             sys.exit(0)
 
         self._app_state.config.write_value("scoring", scoring, on_written)
+
+
+# ── SetSummarizePromptCommand ──────────────────────────────────────────────────
+
+class SetSummarizePromptCommand(UICommand, ABC):
+    """Write scoring.openai_summarize_prompt to config and restart."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _read_current_summarize_prompt(self) -> str:
+        assert self._app_state.config is not None
+        result: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            result[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring = result[0] if isinstance(result[0], dict) else {}
+        return str(scoring.get("openai_summarize_prompt", ""))  # type: ignore[union-attr]
+
+    def _set_summarize_prompt_and_restart(self, prompt: str) -> None:
+        assert self._app_state.config is not None
+        scoring_val: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            scoring_val[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring: dict = scoring_val[0] if isinstance(scoring_val[0], dict) else {}  # type: ignore[assignment]
+        scoring["openai_summarize_prompt"] = prompt
+
+        def on_written(ok: bool, err: str) -> None:
+            if not ok:
+                logger.error("set_summarize_prompt: write_value error: %s", err)
+            assert self._app_state.config is not None
+            self._app_state.config.save(
+                lambda ok2, err2: logger.error("set_summarize_prompt: config save error: %s", err2) if not ok2 else None
+            )
+            logger.info("openai_summarize_prompt updated, restarting")
+            sys.exit(0)
+
+        self._app_state.config.write_value("scoring", scoring, on_written)
+
+
+# ── SetClusterPromptCommand ────────────────────────────────────────────────────
+
+class SetClusterPromptCommand(UICommand, ABC):
+    """Write scoring.openai_cluster_prompt to config and restart."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _read_current_cluster_prompt(self) -> str:
+        assert self._app_state.config is not None
+        result: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            result[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring = result[0] if isinstance(result[0], dict) else {}
+        return str(scoring.get("openai_cluster_prompt", ""))  # type: ignore[union-attr]
+
+    def _set_cluster_prompt_and_restart(self, prompt: str) -> None:
+        assert self._app_state.config is not None
+        scoring_val: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            scoring_val[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring: dict = scoring_val[0] if isinstance(scoring_val[0], dict) else {}  # type: ignore[assignment]
+        scoring["openai_cluster_prompt"] = prompt
+
+        def on_written(ok: bool, err: str) -> None:
+            if not ok:
+                logger.error("set_cluster_prompt: write_value error: %s", err)
+            assert self._app_state.config is not None
+            self._app_state.config.save(
+                lambda ok2, err2: logger.error("set_cluster_prompt: config save error: %s", err2) if not ok2 else None
+            )
+            logger.info("openai_cluster_prompt updated, restarting")
+            sys.exit(0)
+
+        self._app_state.config.write_value("scoring", scoring, on_written)
+
+
+# ── SetMergePromptCommand ──────────────────────────────────────────────────────
+
+class SetMergePromptCommand(UICommand, ABC):
+    """Write scoring.openai_merge_prompt to config and restart."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _read_current_merge_prompt(self) -> str:
+        assert self._app_state.config is not None
+        result: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            result[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring = result[0] if isinstance(result[0], dict) else {}
+        return str(scoring.get("openai_merge_prompt", ""))  # type: ignore[union-attr]
+
+    def _set_merge_prompt_and_restart(self, prompt: str) -> None:
+        assert self._app_state.config is not None
+        scoring_val: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            scoring_val[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring: dict = scoring_val[0] if isinstance(scoring_val[0], dict) else {}  # type: ignore[assignment]
+        scoring["openai_merge_prompt"] = prompt
+
+        def on_written(ok: bool, err: str) -> None:
+            if not ok:
+                logger.error("set_merge_prompt: write_value error: %s", err)
+            assert self._app_state.config is not None
+            self._app_state.config.save(
+                lambda ok2, err2: logger.error("set_merge_prompt: config save error: %s", err2) if not ok2 else None
+            )
+            logger.info("openai_merge_prompt updated, restarting")
+            sys.exit(0)
+
+        self._app_state.config.write_value("scoring", scoring, on_written)
+
+
+# ── SetCronCommand ─────────────────────────────────────────────────────────────
+
+class SetCronCommand(UICommand, ABC):
+    """Write common.cron_schedule to config and restart."""
+
+    _CRON_HELP = (
+        "Cron format: minute hour day-of-month month day-of-week\n"
+        "Examples:\n"
+        "  0 8 * * *     — every day at 08:00\n"
+        "  0 */4 * * *   — every 4 hours\n"
+        "  30 7 * * 1-5  — weekdays at 07:30\n"
+        "Reference: https://crontab.guru/"
+    )
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _read_current_cron(self) -> str:
+        assert self._app_state.config is not None
+        result: list[object] = [{}]
+
+        def on_common(ok: bool, err: str, val: object) -> None:
+            result[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("common", on_common)
+        common = result[0] if isinstance(result[0], dict) else {}
+        return str(common.get("cron_schedule", ""))  # type: ignore[union-attr]
+
+    @staticmethod
+    def _local_tz_label() -> str:
+        """Return e.g. 'CET (UTC+0100)' for the system timezone."""
+        import time
+        return time.strftime("%Z (UTC%z)")
+
+    @staticmethod
+    def _now_label() -> str:
+        """Return current local time as 'YYYY-MM-DD HH:MM'."""
+        import time
+        return time.strftime("%Y-%m-%d %H:%M")
+
+    @staticmethod
+    def _next_run_label(expr: str) -> str:
+        """Return e.g. 'next in 3h 42m' for the given cron expression."""
+        import datetime
+        import time
+        from croniter import croniter  # type: ignore[import-untyped]
+        now_aware = datetime.datetime.now().astimezone()
+        delta = int(croniter(expr, now_aware).get_next(float) - time.time())
+        h, rem = divmod(max(delta, 0), 3600)
+        m = rem // 60
+        if h:
+            return f"next in {h}h {m:02d}m"
+        return f"next in {m}m"
+
+    @staticmethod
+    def _validate_cron(expr: str) -> bool:
+        try:
+            from croniter import croniter  # type: ignore[import-untyped]
+        except ImportError:
+            logger.error("croniter is not installed — run: pip install croniter")
+            raise
+        return bool(croniter.is_valid(expr))
+
+    def _set_cron_and_restart(self, expr: str) -> None:
+        """Write common.cron_schedule (empty string = disabled) and restart."""
+        assert self._app_state.config is not None
+        common_val: list[object] = [{}]
+
+        def on_common(ok: bool, err: str, val: object) -> None:
+            common_val[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("common", on_common)
+        common: dict = common_val[0] if isinstance(common_val[0], dict) else {}  # type: ignore[assignment]
+
+        if expr:
+            common["cron_schedule"] = expr
+        else:
+            common.pop("cron_schedule", None)
+
+        def on_written(ok: bool, err: str) -> None:
+            if not ok:
+                logger.error("set_cron: write_value error: %s", err)
+            assert self._app_state.config is not None
+            self._app_state.config.save(
+                lambda ok2, err2: logger.error("set_cron: config save error: %s", err2) if not ok2 else None
+            )
+            logger.info("cron_schedule updated to %r, restarting", expr or "(disabled)")
+            sys.exit(0)
+
+        self._app_state.config.write_value("common", common, on_written)
+
+
+# ── SetPromptGroupCommand ──────────────────────────────────────────────────────
+
+class SetPromptGroupCommand(UICommandGroup, ABC):
+    """Groups EVAL, INTEREST, SUMMARIZE, MERGE sub-commands under 'prompt'."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    @property
+    def control_title(self) -> str:
+        return "prompt"
+
+    @property
+    @abstractmethod
+    def subcommands(self) -> list[UICommand]: ...
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

@@ -35,7 +35,19 @@ def render_content_table(content: list[Content], console: Console) -> None:
         date_str = datetime.fromtimestamp(item.published_ts).strftime("%b %d %H:%M")
         text = item.summary or item.body
         summary_str = text
-        table.add_row(str(i), date_str, score_str, item.title, item.source_id, summary_str)
+
+        if item.related_ids:
+            title_display = f"🔀 {item.title}"
+            sources_lines = []
+            for related in item.related_contents:
+                src_label = f"  • {related.title} [{related.source_id}]"
+                sources_lines.append(src_label)
+            source_display = "merged\n" + "\n".join(sources_lines) if sources_lines else "merged"
+        else:
+            title_display = item.title
+            source_display = item.source_id
+
+        table.add_row(str(i), date_str, score_str, title_display, source_display, summary_str)
 
     console.print(table)
 
