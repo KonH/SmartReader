@@ -6,11 +6,10 @@ import logging
 from ._types import Callback, LiveFeedbackHandler
 from .config import Config
 from .input import Input
-from .scoring import Scoring
+from .pipeline.adapter import PipelineAdapter
 from .secrets import Secrets
 from .state import State
 from .state.app_state import AppState
-from .summarize import Summarize
 from .types.content import Content
 from .types.params import ConfigParams, SecretsParams, UIParams
 from .ui import UI
@@ -28,8 +27,7 @@ class Coordinator:
         input: Input,
         config: Config,
         state: State,
-        scoring: Scoring,
-        summarize: Summarize,
+        pipeline: PipelineAdapter,
         secrets: Secrets,
         app_state: AppState,
     ) -> None:
@@ -37,15 +35,14 @@ class Coordinator:
         self._input = input
         self._config = config
         self._state = state
-        self._scoring = scoring
-        self._summarize = summarize
+        self._pipeline = pipeline
         self._secrets = secrets
         self._app_state = app_state
 
     # ── Initialization ────────────────────────────────────────────────────────
 
     def initialize(self, callback: Callback) -> None:
-        """Initialize all modules: secrets → config → state → scoring → summarize → ui → input."""
+        """Initialize all modules: secrets → config → state → pipeline → ui → input."""
         logger.info("initializing secrets")
         self._secrets.initialize(
             SecretsParams(),
@@ -64,32 +61,25 @@ class Coordinator:
             callback(False, f"config: {err}")
             return
         logger.info("initializing state")
-        self._state.load(ConfigParams(), lambda ok2, err2: self._init_scoring(ok2, err2, callback))
+        self._state.load(ConfigParams(), lambda ok2, err2: self._init_pipeline(ok2, err2, callback))
 
-    def _init_scoring(self, ok: bool, err: str, callback: Callback) -> None:
+    def _init_pipeline(self, ok: bool, err: str, callback: Callback) -> None:
         if not ok:
             callback(False, f"state: {err}")
             return
-        logger.info("initializing scoring")
-        self._scoring.initialize(lambda ok2, err2: self._init_summarize(ok2, err2, callback))
-
-    def _init_summarize(self, ok: bool, err: str, callback: Callback) -> None:
-        if not ok:
-            callback(False, f"scoring: {err}")
-            return
-        logger.info("initializing summarize")
-        self._summarize.initialize(lambda ok2, err2: self._init_ui(ok2, err2, callback))
+        logger.info("initializing pipeline")
+        self._pipeline.initialize(lambda ok2, err2: self._init_ui(ok2, err2, callback))
 
     def _live_feedback(self, content: Content, upvote: bool) -> None:
         """Handle asynchronous inline vote from TelegramUI."""
         logger.info("live feedback for %r: upvote=%s", content.id, upvote)
-        self._scoring.update_score(content, upvote, lambda ok, err: (
+        self._pipeline.update_score(content, upvote, lambda ok, err: (
             logger.error("live feedback update_score error for %s: %s", content.id, err) if not ok else None
         ))
 
     def _init_ui(self, ok: bool, err: str, callback: Callback) -> None:
         if not ok:
-            callback(False, f"summarize: {err}")
+            callback(False, f"pipeline: {err}")
             return
         logger.info("initializing ui")
         self._ui.initialize(

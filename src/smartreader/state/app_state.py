@@ -11,8 +11,7 @@ if TYPE_CHECKING:
     from . import State
     from ..config import Config
     from ..input import Input
-    from ..scoring import Scoring
-    from ..summarize import Summarize
+    from ..pipeline.adapter import PipelineAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +27,12 @@ class AppState:
         self,
         state: "State",
         config: "Config | None" = None,
-        scoring: "Scoring | None" = None,
-        summarize: "Summarize | None" = None,
+        pipeline: "PipelineAdapter | None" = None,
         input: "Input | None" = None,
     ) -> None:
         self._state = state
         self.config = config
-        self.scoring = scoring
-        self.summarize = summarize
+        self.pipeline = pipeline
         self.input = input
         # Runtime (non-persisted) fields populated during pipeline execution
         self.categories: list[str] = []

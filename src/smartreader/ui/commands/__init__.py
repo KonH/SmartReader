@@ -21,16 +21,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_EFFORT_L1 = 1
-_EFFORT_L2 = 2
-_TOP_N_L1_DEFAULT = 10
-_TOP_N_L2_DEFAULT = 5
-
 
 # ── ShowContentCommand ─────────────────────────────────────────────────────────
 
 class ShowContentCommand(UICommand, ABC):
-    """Full read → L1 → summarize → L2 → show pipeline."""
+    """Full read → pipeline → show flow."""
 
     def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
         self._app_state = app_state
@@ -39,11 +34,10 @@ class ShowContentCommand(UICommand, ABC):
     # ── Pipeline helpers ───────────────────────────────────────────────────────
 
     def _run_pipeline(self, category: str | None) -> list[Content]:
-        """Execute the read→score→summarize pipeline and return items to show."""
+        """Execute the read → pipeline stages flow and return items to show."""
         assert self._app_state.config is not None
         assert self._app_state.input is not None
-        assert self._app_state.scoring is not None
-        assert self._app_state.summarize is not None
+        assert self._app_state.pipeline is not None
 
         # Read common config
         initial_days: list[int] = [7]
@@ -114,66 +108,9 @@ class ShowContentCommand(UICommand, ABC):
             logger.info("no new content")
             return []
 
-        # L1 scoring
-        logger.info("read %d item(s), starting L1 scoring", len(all_items))
-        for item in all_items:
-            def on_l1(ok: bool, err: str, score: float, _item: Content = item) -> None:
-                if ok:
-                    _item.score = score
-                    logger.info("L1 scored %r: %.3f", _item.id, score)
-                else:
-                    logger.warning("l1 score error for %s: %s", _item.id, err)
-            self._app_state.scoring.score(item, _EFFORT_L1, on_l1)
-
-        # Select top N L1
-        top_n_l1_val: list[int] = [_TOP_N_L1_DEFAULT]
-
-        def on_scoring_cfg_l1(ok: bool, err: str, val: object) -> None:
-            if ok and isinstance(val, dict):
-                top_n_l1_val[0] = int(val.get("top_n_l1", _TOP_N_L1_DEFAULT))
-
-        self._app_state.config.read_value("scoring", on_scoring_cfg_l1)
-        top_l1 = sorted(all_items, key=lambda c: c.score or 0.0, reverse=True)[:top_n_l1_val[0]]
-        logger.info("selected top %d/%d item(s) for summarization", len(top_l1), len(all_items))
-
-        # Summarize
-        summarized: list[Content] = []
-        for item in top_l1:
-            result: list[Content] = []
-
-            def on_summary(ok: bool, err: str, s: Content, _r: list[Content] = result, _item: Content = item) -> None:
-                if not ok:
-                    logger.warning("summarize error for %s: %s", _item.id, err)
-                _r.append(s if ok else _item)
-
-            logger.info("summarizing %r", item.id)
-            self._app_state.summarize.summarize(item, on_summary)
-            summarized.append(result[0] if result else item)
-
-        logger.info("summarization done: %d item(s)", len(summarized))
-
-        # L2 scoring
-        for item in summarized:
-            def on_l2(ok: bool, err: str, score: float, _item: Content = item) -> None:
-                if ok:
-                    _item.score = score
-                    logger.info("L2 scored %r: %.3f", _item.id, score)
-                else:
-                    logger.warning("l2 score error for %s: %s", _item.id, err)
-            self._app_state.scoring.score(item, _EFFORT_L2, on_l2)
-
-        # Select top N L2
-        top_n_l2_val: list[int] = [_TOP_N_L2_DEFAULT]
-
-        def on_scoring_cfg_l2(ok: bool, err: str, val: object) -> None:
-            if ok and isinstance(val, dict):
-                top_n_l2_val[0] = int(val.get("top_n_l2", _TOP_N_L2_DEFAULT))
-
-        self._app_state.config.read_value("scoring", on_scoring_cfg_l2)
-        top_l2 = sorted(summarized, key=lambda c: c.score or 0.0, reverse=True)[:top_n_l2_val[0]]
-        logger.info("selected top %d/%d item(s) for display", len(top_l2), len(summarized))
-
-        final = sorted(top_l2, key=lambda c: c.published_ts)
+        logger.info("read %d item(s), starting pipeline", len(all_items))
+        final_candidates = self._app_state.pipeline.process(all_items)
+        final = sorted(final_candidates, key=lambda c: c.published_ts)
         self._app_state.shown_items = final
         return final
 
@@ -195,7 +132,7 @@ class ShowContentCommand(UICommand, ABC):
 
     def _process_feedback(self, feedback: list[tuple[str, bool]]) -> None:
         """Update interest scores based on user feedback."""
-        assert self._app_state.scoring is not None
+        assert self._app_state.pipeline is not None
         if not feedback:
             return
         logger.info("processing %d feedback item(s)", len(feedback))
@@ -205,7 +142,7 @@ class ShowContentCommand(UICommand, ABC):
                 logger.warning("feedback for unknown item id: %s", item_id)
                 continue
             logger.info("updating interests for %r: upvote=%s", item_id, upvote)
-            self._app_state.scoring.update_score(
+            self._app_state.pipeline.update_score(
                 content, upvote,
                 lambda ok, err, _id=item_id: (
                     logger.error("update_score error for %s: %s", _id, err) if not ok else None

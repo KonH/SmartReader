@@ -2,48 +2,57 @@
 # Copy this file to config.toml and adjust values to your needs.
 
 [scoring]
-top_n_l1 = 10         # Max articles passed to the summarizer after L1 keyword scoring
-top_n_l2 = 5          # Max articles shown to the user after L2 scoring (post-summarize)
 upvote_power = 1.5    # Interest delta applied on upvote
 downvote_power = -1.0 # Interest delta applied on downvote
 skip = []             # Stop-words excluded from all keyword scorers; editable at runtime via 'skip'
-# openai_prompt = "..."  # Default prompt for all OpenAI scorers; editable at runtime via 'prompt'
+# openai_prompt = "..."           # Global prompt fallback for openai_score stages; editable at runtime via 'prompt'
+# openai_interests_prompt = "..." # Global interests prompt fallback; editable at runtime via 'interests prompt'
 
-# L1 scorers — run on raw content before summarization (fast pass)
-[[scoring.l1]]
-type = "keyword"
+# ── Pipeline stages ──────────────────────────────────────────────────────────
+# Define the processing pipeline as an ordered array of stages.
+# Each stage receives the output of the previous stage.
+# Stages run in order; use top_n to limit items between stages.
+
+# Keyword scorer — adds score based on keyword interests (title + summary/body)
+[[pipeline]]
+type = "keyword_score"
 common_weight = 1.0   # Weight applied to global keyword interests
 category_weight = 1.5 # Weight applied to per-category interests
 
-# Optional noise scorer — adds randomness to shuffle results
-# [[scoring.l1]]
-# type = "noise"
+# Shuffle — adds random noise to scores for diversification
+# [[pipeline]]
+# type = "shuffle"
 # noise_factor = 0.5  # score += random() * noise_factor
 
-# Optional OpenAI scorer — uses an LLM to judge article relevance.
+# Top-N selector — keeps only the top N items by score
+[[pipeline]]
+type = "top_n"
+n = 10                # Max items to pass to the next stage
+
+# Summarize — calls the active Summarize implementation on each item
+# [[pipeline]]
+# type = "summarize"
+
+# Trim — truncates item.summary to a maximum number of lines/characters
+# [[pipeline]]
+# type = "trim"
+# lines = 10          # max lines to keep from the summary
+# chars = 500         # optional: max total characters (omit = no limit)
+
+# OpenAI scorer — uses an LLM to judge article relevance.
 # Requires OPENAI_API_KEY environment variable.
 # Accumulates feedback (upvotes/downvotes) and summarizes user preferences
 # at next startup to improve future scoring.
-# [[scoring.l1]]
-# type         = "openai"
+# [[pipeline]]
+# type         = "openai_score"
 # score_factor = 1.0           # score range: [-score_factor, +score_factor]
 # model        = "gpt-4o-mini" # OpenAI model ID
-# prompt       = "..."         # optional: override default scoring instructions
+# prompt       = "..."         # optional: override global openai_prompt
 
-# L2 scorers — run on summarized content for final ranking
-[[scoring.l2]]
-type = "keyword"
-common_weight = 1.0
-category_weight = 1.5
-
-# ── Summarizer ────────────────────────────────────────────────────────────────
-# [summarize.trim] trims the summary produced by the active Summarize implementation.
-# Useful to keep Telegram messages or terminal output concise.
-#
-# [summarize.trim]
-# active = false
-# lines  = 10     # max lines to keep from the summary
-# chars  = 500    # optional: max total characters (omit = no limit)
+# Final top-N for display
+[[pipeline]]
+type = "top_n"
+n = 5
 
 # ── Telegram Bot UI (optional) ────────────────────────────────────────────────
 # Set active = true to receive content via a Telegram bot instead of the terminal.

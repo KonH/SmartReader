@@ -12,12 +12,11 @@ from .input.rss import RSSReader
 from .input.source_reader import SourceReader
 from .input.telegram import TelegramReader
 from .main import Coordinator
-from .scoring.adapter import ScoringAdapter
+from .pipeline.adapter import build_pipeline
 from .secrets.env import EnvSecrets
 from .state.app_state import AppState
 from .state.sqlite import SQLiteState
 from .summarize.mock import MockSummarize
-from .summarize.trim import TrimSummarize
 from .ui import UI
 from .ui.command import UICommand
 from .ui.commands import (
@@ -49,38 +48,37 @@ _KNOWN_COMMAND_TYPES: list[type[UICommand]] = [
     SetInterestsPromptCommand,
 ]
 
-
-def _make_shared_ui_state_and_ui() -> tuple[object, UI]:
-    """Read config.toml early to decide which UI/shared state to create."""
-    try:
-        with open("config.toml", "rb") as f:
-            cfg = tomllib.load(f)
-    except Exception:
-        cfg = {}
-
-    if cfg.get("telegram_ui", {}).get("active"):
-        logger.info("using TelegramUI")
-        shared = TelegramSharedUIState()
-        ui: UI = TelegramUI(shared)
-    else:
-        shared = TerminalSharedUIState()
-        ui = TerminalUI(shared)
-
-    return shared, ui
+_DEFAULT_PIPELINE: list[dict] = [
+    {"type": "keyword_score", "common_weight": 1.0, "category_weight": 1.5},
+    {"type": "top_n", "n": 10},
+    {"type": "summarize"},
+    {"type": "keyword_score", "common_weight": 1.0, "category_weight": 1.5},
+    {"type": "top_n", "n": 5},
+]
 
 
 def main() -> None:
     state_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("state.sqlite")
 
+    try:
+        with open("config.toml", "rb") as f:
+            raw_cfg = tomllib.load(f)
+    except Exception:
+        raw_cfg = {}
+
     config = TOMLConfig()
     state = SQLiteState(path=state_path)
-
-    shared_common: dict[str, float] = {}
-    shared_category: dict[str, dict[str, float]] = {}
-
     secrets = EnvSecrets()
-    scoring = ScoringAdapter(config, state, shared_common, shared_category, secrets=secrets)
-    summarize = TrimSummarize(MockSummarize(), config)
+    summarize = MockSummarize()
+
+    scoring_cfg = raw_cfg.get("scoring", {})
+    pipeline = build_pipeline(
+        raw_cfg.get("pipeline", _DEFAULT_PIPELINE),
+        state, config, secrets, summarize,
+        global_prompt=scoring_cfg.get("openai_prompt", ""),
+        global_interests_prompt=scoring_cfg.get("openai_interests_prompt", ""),
+    )
+
     source_reader = SourceReader(
         config=config,
         readers={"rss": RSSReader(), "telegram": TelegramReader()},
@@ -89,17 +87,22 @@ def main() -> None:
     app_state = AppState(
         state=state,
         config=config,
-        scoring=scoring,
-        summarize=summarize,
+        pipeline=pipeline,
         input=source_reader,
     )
 
-    shared_ui_state, ui = _make_shared_ui_state_and_ui()
+    if raw_cfg.get("telegram_ui", {}).get("active"):
+        logger.info("using TelegramUI")
+        shared: object = TelegramSharedUIState()
+        ui: UI = TelegramUI(shared)
+    else:
+        shared = TerminalSharedUIState()
+        ui = TerminalUI(shared)
 
     # Instantiate only commands that the UI supports and that are in our known set
     ui_cmd_types = ui.get_commands()
     commands: list[UICommand] = [
-        cmd_type(app_state, shared_ui_state)
+        cmd_type(app_state, shared)
         for cmd_type in ui_cmd_types
         if any(issubclass(cmd_type, k) for k in _KNOWN_COMMAND_TYPES)
     ]
@@ -109,8 +112,7 @@ def main() -> None:
         input=source_reader,
         config=config,
         state=state,
-        scoring=scoring,
-        summarize=summarize,
+        pipeline=pipeline,
         secrets=secrets,
         app_state=app_state,
     )

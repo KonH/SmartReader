@@ -23,21 +23,12 @@ _DEFAULTS: dict = {
         "upvote_reaction": "👍",
         "downvote_reaction": "👎",
     },
-    "summarize": {
-        "trim": {
-            "active": False,
-            "lines": 10,
-            # chars omitted — absent means no char limit (TOML has no null)
-        },
-    },
     "telegram": {
         "active": False,
         "read_source_min_interval": 1000,
         "read_source_max_interval": 3000,
     },
     "scoring": {
-        "top_n_l1": 10,
-        "top_n_l2": 5,
         "upvote_power": 1.5,
         "downvote_power": -1.0,
         "skip": [
@@ -52,9 +43,14 @@ _DEFAULTS: dict = {
             "as", "if", "then", "than", "so", "up", "out", "about",
             "all", "also", "just", "more", "new", "now", "one", "other", "over", "said", "such",
         ],
-        "l1": [{"type": "keyword", "common_weight": 1.0, "category_weight": 1.5}],
-        "l2": [{"type": "keyword", "common_weight": 1.0, "category_weight": 1.5}],
     },
+    "pipeline": [
+        {"type": "keyword_score", "common_weight": 1.0, "category_weight": 1.5},
+        {"type": "top_n", "n": 10},
+        {"type": "summarize"},
+        {"type": "keyword_score", "common_weight": 1.0, "category_weight": 1.5},
+        {"type": "top_n", "n": 5},
+    ],
 }
 
 

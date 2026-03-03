@@ -1,7 +1,7 @@
 import pytest
 
 from smartreader.config import Config
-from smartreader.scoring.adapter import ScoringAdapter
+from smartreader.pipeline.adapter import PipelineAdapter, build_pipeline
 from smartreader.scoring.keyword import L1KeywordScoring, L2KeywordScoring
 from smartreader.state import State
 from smartreader.types.content import Content
@@ -27,12 +27,18 @@ class StubState(State):
 
 
 class StubConfig(Config):
-    def __init__(self, scoring: dict) -> None:
+    def __init__(self, scoring: dict, pipeline: list | None = None) -> None:
         self._scoring = scoring
+        self._pipeline = pipeline or []
 
     def load(self, params: ConfigParams, callback) -> None: callback(True, "")
     def read_value(self, key: str, callback) -> None:
-        callback(True, "", self._scoring if key == "scoring" else {})
+        if key == "scoring":
+            callback(True, "", self._scoring)
+        elif key == "pipeline":
+            callback(True, "", self._pipeline)
+        else:
+            callback(True, "", {})
     def write_value(self, key: str, value: StateValue, callback) -> None: callback(True, "")
     def save(self, callback) -> None: callback(True, "")
 
@@ -210,39 +216,46 @@ def test_update_score_category_interests_updated() -> None:
     assert "machine" in cat or "learning" in cat
 
 
-# ── ScoringAdapter ─────────────────────────────────────────────────────────────
+# ── PipelineAdapter ────────────────────────────────────────────────────────────
 
 def _make_adapter(
     common_kw: dict = {}, category_kw: dict = {},
     common_weight: float = 1.0, category_weight: float = 1.0,
-) -> tuple[ScoringAdapter, StubState]:
+) -> tuple[PipelineAdapter, StubState]:
     state = StubState({
         "common_keyword_interests": common_kw,
         "category_interests": category_kw,
     })
-    config = StubConfig({
-        "l1": [{"type": "keyword", "common_weight": common_weight, "category_weight": category_weight}],
-        "l2": [{"type": "keyword", "common_weight": common_weight, "category_weight": category_weight}],
-    })
-    shared_common: dict[str, float] = {}
-    shared_category: dict[str, dict[str, float]] = {}
-    adapter = ScoringAdapter(config, state, shared_common, shared_category)
+    pipeline_entries = [
+        {"type": "keyword_score", "common_weight": common_weight, "category_weight": category_weight},
+    ]
+    config = StubConfig(scoring={}, pipeline=pipeline_entries)
+    adapter = build_pipeline(pipeline_entries, state, config)
     adapter.initialize(lambda ok, err: None)
     return adapter, state
 
 
-def test_adapter_delegates_l1_for_effort_1() -> None:
+def test_adapter_scores_items() -> None:
     adapter, _ = _make_adapter(common_kw={"python": 1.0})
-    # L1 uses body; keyword only in body → should score > 0
-    content = _content(title="nothing", body="python tutorial", summary="nothing")
-    assert _score(adapter, content, effort=1) > 0.0
-
-
-def test_adapter_delegates_l2_for_effort_2() -> None:
-    adapter, _ = _make_adapter(common_kw={"python": 1.0})
-    # L2 uses summary; keyword only in summary → should score > 0
     content = _content(title="nothing", body="nothing", summary="python rocks")
-    assert _score(adapter, content, effort=2) > 0.0
+    items = [content]
+    result = adapter.process(items)
+    assert len(result) == 1
+    assert result[0].score is not None
+    assert result[0].score > 0.0
+
+
+def test_adapter_top_n_limits_items() -> None:
+    state = StubState({"common_keyword_interests": {}, "category_interests": {}})
+    pipeline_entries = [{"type": "top_n", "n": 2}]
+    config = StubConfig(scoring={}, pipeline=pipeline_entries)
+    adapter = build_pipeline(pipeline_entries, state, config)
+    adapter.initialize(lambda ok, err: None)
+    items = [
+        _content("a"), _content("b"), _content("c"), _content("d"),
+    ]
+    result = adapter.process(items)
+    assert len(result) == 2
 
 
 def test_adapter_update_score_updates_shared_interests() -> None:
@@ -250,6 +263,4 @@ def test_adapter_update_score_updates_shared_interests() -> None:
     content = _content(title="python rocks", body="deep learning", summary="neural networks")
     adapter.update_score(content, upvote=True, callback=lambda ok, err: None)
     written = state.written.get("common_keyword_interests", {})
-    # Words from both L1 (body) and L2 (summary) should be in interests
     assert "python" in written
-    assert any(w in written for w in ("learning", "learn", "neural", "network", "networks"))

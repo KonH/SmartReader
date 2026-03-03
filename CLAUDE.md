@@ -34,7 +34,7 @@ Six modules coordinated by a **Main Coordinator**. All async operations use a un
 | Input | Fetch content | RSS and/or Telegram (any of) |
 | Config | App config | TOML file |
 | State | Persistent state | SQLite (optionally wrapped with Encryption) |
-| Scoring | Rank content | Multi-scorer pipeline (keyword, noise, …) via ScoringAdapter |
+| Pipeline | Score + summarize + select | Configurable stage list via `PipelineAdapter` / `build_pipeline` |
 | Summarize | Summarize content | OpenAI API |
 | Secrets | Credential access | Environment variables |
 
@@ -81,27 +81,33 @@ downvote_reaction = "👎"
 [telegram]
 active = false        # set true to enable Telegram channel sources (input)
 
-[summarize.trim]
-active = false        # set true to trim summaries after summarization
-lines = 10            # max lines to keep
-# chars = 500         # optional: max total chars (omit = no limit)
-
 [scoring]
-top_n_l1 = 10         # max articles passed to summarizer after L1 scoring
-top_n_l2 = 5          # max articles shown to user after L2 scoring
 upvote_power = 1.5
 downvote_power = -1.0
 skip = []             # stop-words excluded from all keyword scorers; editable at runtime via 'skip' command
+# openai_prompt = "..."           # optional: global default prompt for openai_score stages
+# openai_interests_prompt = "..." # optional: global default interests prompt for openai_score stages
 
-[[scoring.l1]]        # one or more scorer entries (array-of-tables)
-type = "keyword"      # "keyword" | "noise"
+[[pipeline]]          # ordered list of stages
+type = "keyword_score"  # "keyword_score" | "openai_score" | "shuffle" | "summarize" | "trim" | "top_n"
 common_weight = 1.0
 category_weight = 1.5
 
-[[scoring.l2]]
-type = "keyword"
+[[pipeline]]
+type = "top_n"
+n = 10
+
+[[pipeline]]
+type = "summarize"
+
+[[pipeline]]
+type = "keyword_score"
 common_weight = 1.0
 category_weight = 1.5
+
+[[pipeline]]
+type = "top_n"
+n = 5
 
 [sources]
 [[sources.<name>]]
@@ -142,7 +148,7 @@ Summarize: initialize(cb) | summarize(content, cb<content>)
 Secrets:   initialize(params, cb) | readValue(key, cb<string>)
 ```
 
-- **Coordinator init order**: `secrets → config → state → scoring → summarize → ui → input`. Input init runs last so it has access to loaded secrets and config.
+- **Coordinator init order**: `secrets → config → state → pipeline → ui → input`. Input init runs last so it has access to loaded secrets and config.
 - **Input.initialize**: optional hook (default no-op). `SourceReader` delegates to any registered reader that implements it. Returning `success=False` aborts the app.
 - **lastReadTs invariant**: only sources whose `read_sources` call succeeded get their `lastReadTs` updated. Failed reads are skipped with a warning and will be retried next run.
 - **Feature gating pattern**: optional integrations are enabled via a top-level TOML section, e.g. `[telegram] active = true`. The implementation checks this flag in its `initialize` and skips setup when inactive.
@@ -150,7 +156,7 @@ Secrets:   initialize(params, cb) | readValue(key, cb<string>)
 - **Decorator pattern for Summarize**: post-processing (e.g. trimming) is added by wrapping an inner `Summarize` impl, not by modifying the UI. `TrimSummarize(inner, config)` is the established example.
 - **`UIParams.live_feedback`**: optional `LiveFeedbackHandler` passed to `UI.initialize`; used by non-blocking UIs (e.g. `TelegramUI`) to push async vote feedback directly to the coordinator without waiting for `show_content_list` to return.
 - **`config.schema.toml`**: user-facing reference file in the project root — update it alongside CLAUDE.md whenever config sections are added or changed. Also update `.env.example` whenever new secrets are introduced.
-- **`AppState` wrapper**: `state/app_state.py` wraps `State` with typed access — `read_all_typed(cb<AppStateData>)` and `remove_keyword(word, cb)`. Constructor: `AppState(state, config, scoring, summarize, input)` — holds module refs plus runtime fields (`categories`, `active_source_ids`, `successful_source_ids`, `shown_items`, `trigger_category`, `initial_days_interval`). Instantiated in `__main__.py` and passed to `Coordinator` and all commands.
+- **`AppState` wrapper**: `state/app_state.py` wraps `State` with typed access — `read_all_typed(cb<AppStateData>)` and `remove_keyword(word, cb)`. Constructor: `AppState(state, config=None, pipeline=None, input=None)` — holds module refs plus runtime fields (`categories`, `active_source_ids`, `successful_source_ids`, `shown_items`, `trigger_category`, `initial_days_interval`). Instantiated in `__main__.py` and passed to `Coordinator` and all commands.
 - **`UICommand` / `SharedUIState` pattern**: `ui/command.py` defines `UICommand` ABC (`control_title: str`, `execute() → None`) and `SharedUIState` ABC (empty marker). Abstract command classes with WHAT-logic live in `ui/commands/__init__.py`; concrete HOW-implementations in `ui/terminal/commands/` and `ui/telegram/commands/`. All commands take `(app_state: AppState, shared_ui_state: SharedUIState)`.
 - **`UI.loop(commands)` contract**: UI is responsible for its own interaction loop. It extracts `app_state` from the `ShowContentCommand` instance (`cmd._app_state`), refreshes categories each iteration via `app_state.config.read_value("sources", ...)`, and dispatches by matching user input to `cmd.control_title`.
 - **`TriggerParams`** still exists in `types/params.py` but is now internal to `TelegramUI.loop()` — the Coordinator no longer dispatches on mode. `TelegramSharedUIState` holds all Telegram-specific state (`trigger_queue`, `category_queue`, `add_step_queue`, `in_add_mode`, `in_skip_mode`, `waiting_for_category`, etc.).
@@ -159,12 +165,12 @@ Secrets:   initialize(params, cb) | readValue(key, cb<string>)
 - **Telegram content messages use HTML mode**: `show_content_list` builds messages with `parse_mode="html"`. Title and body go through `_md_to_html` (HTML-escapes `&<>`, then converts `[text](url)` → `<a href>`, `**bold**` → `<b>`, `` `code` `` → `<code>`). Menu/prompt messages keep `parse_mode="md"`. Telethon parses Markdown client-side before sending, so `_escape_md` backslash sequences appear literally — HTML mode is the correct choice for arbitrary article text.
 - **Pipeline steps with callbacks must be iterative, not recursive**: All coordinator steps that loop over items calling synchronous callbacks (`_score_l1`, `_score_l2`, `_summarize_all`) use a plain `for` loop — callbacks fire synchronously and mutate items in place or append to a local list. Recursive designs hit Python's call stack limit. Never introduce a recursive pipeline step. Exception: chaining over a small, fixed-size list (e.g. 2–3 scorer implementations) is safe and acceptable.
 - **`OpenAIScoring`** (`scoring/openai_scorer.py`): LLM-based scorer. `initialize()` reads API key (hard failure if missing), then runs a summary-update call if pending actions exist (soft failure — logs warning and continues if OpenAI call fails). `score()` sends `system=prompt+preferences, user=article text`; expects a single float reply in `[-1, 1]`, clamped and multiplied by `score_factor`. `update_score()` appends to `self._pending` and writes `openai_scoring_pending_actions` state key immediately.
-- **`ScoringAdapter` constructor**: `ScoringAdapter(config, state, shared_common, shared_category, secrets=None)`. It reads `scoring.l1` / `scoring.l2` arrays from config at `initialize()` time and builds scorer instances internally — `__main__.py` does not instantiate individual scorers. Scorer type is resolved by `type` field: `"keyword"` → `L1/L2KeywordScoring`, `"noise"` → `NoiseScoring`, `"openai"` → `OpenAIScoring`. Per-scorer weights (`common_weight`, `category_weight`) come from the entry dict, not from config reads inside the scorer. `skip` is global (read from top-level `scoring` dict by each keyword scorer). `secrets` is required for `"openai"` scorers; absent secrets causes the entry to be skipped with a warning.
-- **`NoiseScoring`** (`scoring/noise.py`): adds `random() * noise_factor` to score; useful for diversifying results. `noise_factor` comes from the scorer entry dict.
+- **`PipelineAdapter` is a pure runner**: `PipelineAdapter(stages: list[PipelineStage])` — no config/state/secrets in its constructor. Construction logic lives in `build_pipeline(entries, state, config, secrets=None, summarize=None, global_prompt="", global_interests_prompt="")` in `pipeline/adapter.py`. `__main__.py` calls `build_pipeline()` directly; individual stages are never instantiated outside this function. Stage type is resolved by `type` field: `"keyword_score"` → `KeywordScoreStage`, `"openai_score"` → `OpenAIScoreStage`, `"shuffle"` → `ShuffleStage`, `"summarize"` → `SummarizeStage`, `"trim"` → `TrimStage`, `"top_n"` → `TopNStage`. Per-stage weights come from the entry dict; `secrets` is required for `"openai_score"` stages (skipped with warning if absent).
+- **`_DEFAULT_PIPELINE` in `__main__.py`**: fallback stage list used when `config.toml` is missing or has no `[[pipeline]]` section. Matches the defaults in `config/toml.py`.
+- **Single raw-config read in `main()`**: `__main__.py` does one `tomllib.load("config.toml")` at startup; the resulting `raw_cfg` dict serves both UI selection (`telegram_ui.active`) and `build_pipeline()` arguments. No separate helper function.
 - **Keyword tokenizer** (`scoring/keyword.py`): uses `pymorphy3` (not `pymorphy2` — broken on Python 3.12 due to removed `inspect.getargspec`) for Cyrillic; `simplemma` for Latin with lang tuple `('en', 'hbs')` — Serbian is `hbs` (Serbo-Croatian), `sr` is not a valid simplemma code. `simplemma` returns capitalized lemmas for proper nouns — always call `.lower()` on the result. Skip lemmatization for Latin words <4 chars (`simplemma` mis-lemmatizes short tokens, e.g. `"ai"` → `"be"`). `_morph = pymorphy3.MorphAnalyzer()` is a module-level singleton.
 - **Interest keys are always lowercase**: scoring checks `kw.lower() in tokens`; both stored interest keys and the tokens set returned by `_tokenize` must be lowercase or matches silently fail.
-- **Summary length is controlled by `[summarize.trim]` only**: UI code must never hard-code a character/line cap on displayed summaries — that overrides user config.
-- **Per-scorer logging in adapter**: format is `"L1 (keyword) scored 'id': 0.500"` — stage ("L1"/"L2") + short label from `_scorer_label()` (uses `isinstance` checks, not class-name string manipulation).
+- **Summary length is controlled by the `trim` pipeline stage only**: UI code must never hard-code a character/line cap on displayed summaries — that overrides user config.
 - **Pipeline must always show content**: Every code path in `ShowContentCommand._run_pipeline` (including "no sources", "no new content", "empty after scoring") must return a list (possibly empty) so `execute()` calls the render/send step. Returning without rendering leaves the user with no response and no menu (Telegram).
 - **Coordinator is now a pure initializer**: All pipeline logic lives in `ui/commands/__init__.py` (`ShowContentCommand._run_pipeline`, `_update_source_states`, `_process_feedback`). `Coordinator.run(commands)` simply calls `ui.loop(commands)`. Do not add pipeline methods back to Coordinator.
 
