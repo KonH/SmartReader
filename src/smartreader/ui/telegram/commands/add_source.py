@@ -118,7 +118,7 @@ class TelegramAddSourceCommand(AddSourceCommand):
         else:
             category = cat_val if cat_val else None
 
-        run_async(s, async_send_text(s, sender_id, "Source added \u2713  Restarting\u2026"))
+        run_async(s, async_send_text(s, sender_id, "Source added \u2713  Reloading\u2026"))
         return NewSourceParams(
             name=name, source_type=source_type,
             external_id=external_id, category=category,

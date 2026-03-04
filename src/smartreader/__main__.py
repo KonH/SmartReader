@@ -5,6 +5,7 @@ import logging
 import sys
 import tomllib
 from pathlib import Path
+from typing import Callable
 
 from ._logging import setup as setup_logging
 from .config.toml import TOMLConfig
@@ -121,36 +122,93 @@ def main() -> None:
         app_state=app_state,
     )
 
+    # ── Hot-reload: pipeline factory ───────────────────────────────────────────
+    def _pipeline_factory(callback: Callable[[bool, str], None]) -> None:
+        """Re-read config.toml, rebuild and initialize a fresh pipeline in-place."""
+        try:
+            with open("config.toml", "rb") as f:
+                new_raw = tomllib.load(f)
+        except Exception:
+            new_raw = {}
+        scoring = new_raw.get("scoring", {})
+        new_pipeline = build_pipeline(
+            new_raw.get("pipeline", _DEFAULT_PIPELINE),
+            state, config, secrets, MockSummarize(),
+            global_prompt=scoring.get("openai_prompt", ""),
+            global_interests_prompt=scoring.get("openai_interests_prompt", ""),
+            global_merge_prompt=scoring.get("openai_merge_prompt", ""),
+            global_cluster_prompt=scoring.get("openai_cluster_prompt", ""),
+            global_summarize_prompt=scoring.get("openai_summarize_prompt", ""),
+        )
+
+        def _on_pipeline_init(ok: bool, err: str) -> None:
+            if ok:
+                app_state.pipeline = new_pipeline
+                logger.info("pipeline reloaded successfully")
+            else:
+                logger.error("pipeline reload failed: %s", err)
+            callback(ok, err)
+
+        new_pipeline.initialize(_on_pipeline_init)
+
+    app_state.pipeline_factory = _pipeline_factory
+
+    # ── Hot-reload: cron scheduler updater ────────────────────────────────────
+    # Build the trigger callback once based on UI type; reuse it on every reload.
+    _active_scheduler: list[CronScheduler | None] = [None]
+
+    if isinstance(shared, TelegramSharedUIState):
+        _tg = shared
+
+        def _cron_cb() -> None:
+            from .ui.telegram.common import load_last_chat
+            last = load_last_chat()
+            logger.info("cron: fired, last_chat=%s", last)
+            if last is None:
+                logger.warning("cron: no saved chat id — trigger skipped (send any message to the bot first)")
+                return
+            logger.info("cron: queuing trigger for chat_id=%s mode=run", last)
+            _tg.trigger_queue.put({"sender_id": last, "mode": "run"})
+            logger.info("cron: trigger queued (~%d items)", _tg.trigger_queue.qsize())
+
+    elif isinstance(shared, TerminalSharedUIState):
+        _term = shared
+
+        def _cron_cb() -> None:  # type: ignore[no-redef]
+            logger.info("cron: fired, queuing terminal trigger")
+            _term.trigger_queue.put(True)
+            logger.info("cron: terminal trigger queued")
+
+    else:
+        def _cron_cb() -> None:  # type: ignore[no-redef]
+            logger.warning("cron: unrecognized UI state type, trigger ignored")
+
+    def _cron_updater(expr: str) -> None:
+        """Stop the current scheduler (if any) and start a new one for *expr*.
+
+        Pass an empty string to stop the scheduler without starting a new one.
+        """
+        old = _active_scheduler[0]
+        if old is not None:
+            old.stop()
+            _active_scheduler[0] = None
+        if expr:
+            sched = CronScheduler(expr, _cron_cb)
+            sched.start()
+            _active_scheduler[0] = sched
+            logger.info("cron scheduler reloaded with expression %r", expr)
+        else:
+            logger.info("cron scheduler stopped")
+
+    app_state.cron_updater = _cron_updater
+
     def on_init(ok: bool, err: str) -> None:
         if not ok:
             logger.error("init failed: %s", err)
             sys.exit(1)
         cron_expr: str = raw_cfg.get("common", {}).get("cron_schedule", "")
         if cron_expr:
-            if isinstance(shared, TelegramSharedUIState):
-                tg = shared
-
-                def _tg_cron_callback() -> None:
-                    from .ui.telegram.common import load_last_chat
-                    last = load_last_chat()
-                    logger.info("cron: _tg_cron_callback fired, last_chat=%s", last)
-                    if last is None:
-                        logger.warning("cron: no saved chat id — trigger skipped (send any message to the bot first)")
-                        return
-                    logger.info("cron: putting trigger on queue for chat_id=%s mode=run", last)
-                    tg.trigger_queue.put({"sender_id": last, "mode": "run"})
-                    logger.info("cron: trigger queued (queue size now ~%d)", tg.trigger_queue.qsize())
-
-                CronScheduler(cron_expr, _tg_cron_callback).start()
-            elif isinstance(shared, TerminalSharedUIState):
-                term = shared
-
-                def _term_cron_callback() -> None:
-                    logger.info("cron: _term_cron_callback fired, queuing terminal trigger")
-                    term.trigger_queue.put(True)
-                    logger.info("cron: terminal trigger queued")
-
-                CronScheduler(cron_expr, _term_cron_callback).start()
+            app_state.update_cron(cron_expr)
         coordinator.run(commands)
 
     try:

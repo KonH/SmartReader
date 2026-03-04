@@ -6,7 +6,6 @@ leaving the HOW (terminal prompts vs Telegram messages) to concrete subclasses.
 from __future__ import annotations
 
 import logging
-import sys
 import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
@@ -166,7 +165,7 @@ class AddSourceCommand(UICommand, ABC):
         self._shared = shared_ui_state
 
     def _write_source_and_restart(self, params: NewSourceParams) -> None:
-        """Append source entry to config and call sys.exit(0)."""
+        """Append source entry to config and rebuild the pipeline in-place."""
         assert self._app_state.config is not None
         sources_val: list[object] = [{}]
 
@@ -187,8 +186,10 @@ class AddSourceCommand(UICommand, ABC):
         self._app_state.config.save(
             lambda ok, err: logger.error("add_source: config save error: %s", err) if not ok else None,
         )
-        logger.info("config saved with new source, restarting")
-        sys.exit(0)
+        logger.info("config saved with new source, reloading pipeline")
+        self._app_state.rebuild_pipeline(
+            lambda ok, err: logger.error("add_source: reload error: %s", err) if not ok else None,
+        )
 
 
 # ── ShowLogsCommand ────────────────────────────────────────────────────────────
@@ -269,8 +270,10 @@ class SkipWordCommand(UICommand, ABC):
         self._app_state.config.save(
             lambda ok2, err2: logger.error("skip: config save error: %s", err2) if not ok2 else None
         )
-        logger.info("skip word added, restarting")
-        sys.exit(0)
+        logger.info("skip word added, reloading pipeline")
+        self._app_state.rebuild_pipeline(
+            lambda ok2, err2: logger.error("skip: reload error: %s", err2) if not ok2 else None,
+        )
 
 
 # ── SetPromptCommand ───────────────────────────────────────────────────────────
@@ -311,8 +314,10 @@ class SetPromptCommand(UICommand, ABC):
             self._app_state.config.save(
                 lambda ok2, err2: logger.error("set_prompt: config save error: %s", err2) if not ok2 else None
             )
-            logger.info("openai_prompt updated, restarting")
-            sys.exit(0)
+            logger.info("openai_prompt updated, reloading pipeline")
+            self._app_state.rebuild_pipeline(
+                lambda ok2, err2: logger.error("set_prompt: reload error: %s", err2) if not ok2 else None,
+            )
 
         self._app_state.config.write_value("scoring", scoring, on_written)
 
@@ -355,8 +360,10 @@ class SetInterestsPromptCommand(UICommand, ABC):
             self._app_state.config.save(
                 lambda ok2, err2: logger.error("set_interests_prompt: config save error: %s", err2) if not ok2 else None
             )
-            logger.info("openai_interests_prompt updated, restarting")
-            sys.exit(0)
+            logger.info("openai_interests_prompt updated, reloading pipeline")
+            self._app_state.rebuild_pipeline(
+                lambda ok2, err2: logger.error("set_interests_prompt: reload error: %s", err2) if not ok2 else None,
+            )
 
         self._app_state.config.write_value("scoring", scoring, on_written)
 
@@ -399,8 +406,10 @@ class SetSummarizePromptCommand(UICommand, ABC):
             self._app_state.config.save(
                 lambda ok2, err2: logger.error("set_summarize_prompt: config save error: %s", err2) if not ok2 else None
             )
-            logger.info("openai_summarize_prompt updated, restarting")
-            sys.exit(0)
+            logger.info("openai_summarize_prompt updated, reloading pipeline")
+            self._app_state.rebuild_pipeline(
+                lambda ok2, err2: logger.error("set_summarize_prompt: reload error: %s", err2) if not ok2 else None,
+            )
 
         self._app_state.config.write_value("scoring", scoring, on_written)
 
@@ -443,8 +452,10 @@ class SetClusterPromptCommand(UICommand, ABC):
             self._app_state.config.save(
                 lambda ok2, err2: logger.error("set_cluster_prompt: config save error: %s", err2) if not ok2 else None
             )
-            logger.info("openai_cluster_prompt updated, restarting")
-            sys.exit(0)
+            logger.info("openai_cluster_prompt updated, reloading pipeline")
+            self._app_state.rebuild_pipeline(
+                lambda ok2, err2: logger.error("set_cluster_prompt: reload error: %s", err2) if not ok2 else None,
+            )
 
         self._app_state.config.write_value("scoring", scoring, on_written)
 
@@ -487,8 +498,10 @@ class SetMergePromptCommand(UICommand, ABC):
             self._app_state.config.save(
                 lambda ok2, err2: logger.error("set_merge_prompt: config save error: %s", err2) if not ok2 else None
             )
-            logger.info("openai_merge_prompt updated, restarting")
-            sys.exit(0)
+            logger.info("openai_merge_prompt updated, reloading pipeline")
+            self._app_state.rebuild_pipeline(
+                lambda ok2, err2: logger.error("set_merge_prompt: reload error: %s", err2) if not ok2 else None,
+            )
 
         self._app_state.config.write_value("scoring", scoring, on_written)
 
@@ -558,7 +571,7 @@ class SetCronCommand(UICommand, ABC):
         return bool(croniter.is_valid(expr))
 
     def _set_cron_and_restart(self, expr: str) -> None:
-        """Write common.cron_schedule (empty string = disabled) and restart."""
+        """Write common.cron_schedule (empty string = disabled) and hot-reload the scheduler."""
         assert self._app_state.config is not None
         common_val: list[object] = [{}]
 
@@ -580,8 +593,8 @@ class SetCronCommand(UICommand, ABC):
             self._app_state.config.save(
                 lambda ok2, err2: logger.error("set_cron: config save error: %s", err2) if not ok2 else None
             )
-            logger.info("cron_schedule updated to %r, restarting", expr or "(disabled)")
-            sys.exit(0)
+            logger.info("cron_schedule updated to %r, reloading scheduler", expr or "(disabled)")
+            self._app_state.update_cron(expr)
 
         self._app_state.config.write_value("common", common, on_written)
 
