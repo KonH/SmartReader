@@ -7,6 +7,10 @@ from .types.values import StateValue
 # success, error
 Callback = Callable[[bool, str], None]
 
+# Hot-reload factories stored on AppState
+PipelineFactory = Callable[[Callback], None]  # rebuilds pipeline in-place, calls callback(ok, err)
+CronUpdater = Callable[[str], None]  # updates cron scheduler with new expression (empty = stop)
+
 # success, error, result
 StringCallback        = Callable[[bool, str, str], None]
 ScoreCallback         = Callable[[bool, str, float], None]

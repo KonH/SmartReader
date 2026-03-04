@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from .._types import AppStateCallback, Callback
+from .._types import AppStateCallback, Callback, CronUpdater, PipelineFactory
 from ..types.app_state import AppStateData, SourceStateEntry
 from ..types.content import Content
 
@@ -41,6 +41,27 @@ class AppState:
         self.shown_items: list[Content] = []
         self.trigger_category: str | None = None
         self.initial_days_interval: int = 7
+        # Hot-reload factories — set by __main__.py after all modules are created
+        self.pipeline_factory: PipelineFactory | None = None
+        self.cron_updater: CronUpdater | None = None
+
+    def rebuild_pipeline(self, callback: Callback) -> None:
+        """Reload config.toml and rebuild the pipeline in-place without restarting.
+
+        On success, self.pipeline is replaced with the newly initialized adapter.
+        """
+        if self.pipeline_factory is None:
+            logger.warning("rebuild_pipeline: no factory configured")
+            callback(False, "no pipeline factory configured")
+            return
+        self.pipeline_factory(callback)
+
+    def update_cron(self, expr: str) -> None:
+        """Replace the running cron scheduler with a new expression (empty = stop)."""
+        if self.cron_updater is None:
+            logger.warning("update_cron: no updater configured")
+            return
+        self.cron_updater(expr)
 
     def read_all_typed(self, callback: AppStateCallback) -> None:
         self._state.read_all(
