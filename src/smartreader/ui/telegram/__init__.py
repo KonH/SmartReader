@@ -17,6 +17,7 @@ from ..command import UICommand
 from ..commands import ShowContentCommand
 from .commands import (
     TelegramAddSourceCommand,
+    TelegramExplainCommand,
     TelegramSetCronCommand,
     TelegramSetPromptGroupCommand,
     TelegramShowContentCommand,
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 _COMMAND_TYPES: list[type[UICommand]] = [
     TelegramShowContentCommand,
     TelegramAddSourceCommand,
+    TelegramExplainCommand,
     TelegramShowLogsCommand,
     TelegramShowStateCommand,
     TelegramSkipWordCommand,
@@ -60,6 +62,7 @@ _MODE_TO_TITLE = {
     "skip": "skip",
     "prompt": "prompt",
     "cron": "cron",
+    "explain": "explain",
 }
 
 

@@ -1,4 +1,5 @@
 from .add_source import TerminalAddSourceCommand
+from .explain import TerminalExplainCommand
 from .set_cluster_prompt import TerminalSetClusterPromptCommand
 from .set_cron import TerminalSetCronCommand
 from .set_interests_prompt import TerminalSetInterestsPromptCommand
@@ -14,6 +15,7 @@ from .skip_word import TerminalSkipWordCommand
 __all__ = [
     "TerminalShowContentCommand",
     "TerminalAddSourceCommand",
+    "TerminalExplainCommand",
     "TerminalShowLogsCommand",
     "TerminalShowStateCommand",
     "TerminalSkipWordCommand",

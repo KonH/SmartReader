@@ -15,6 +15,7 @@ from ..command import UICommand
 from ..commands import ShowContentCommand
 from .commands import (
     TerminalAddSourceCommand,
+    TerminalExplainCommand,
     TerminalSetCronCommand,
     TerminalSetPromptGroupCommand,
     TerminalShowContentCommand,
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 _COMMAND_TYPES: list[type[UICommand]] = [
     TerminalShowContentCommand,
     TerminalAddSourceCommand,
+    TerminalExplainCommand,
     TerminalShowLogsCommand,
     TerminalShowStateCommand,
     TerminalSkipWordCommand,

@@ -599,6 +599,24 @@ class SetCronCommand(UICommand, ABC):
         self._app_state.config.write_value("common", common, on_written)
 
 
+# ── ExplainCommand ─────────────────────────────────────────────────────────────
+
+class ExplainCommand(UICommand, ABC):
+    """Generate and surface an HTML pipeline report from the latest data.json."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _generate_report(self) -> "Path | None":
+        from pathlib import Path  # noqa: PLC0415
+        from ...pipeline.report import find_latest_data, generate_report
+        data_path = find_latest_data()
+        if data_path is None:
+            return None
+        return generate_report(data_path)
+
+
 # ── SetPromptGroupCommand ──────────────────────────────────────────────────────
 
 class SetPromptGroupCommand(UICommandGroup, ABC):
