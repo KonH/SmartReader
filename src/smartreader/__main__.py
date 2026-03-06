@@ -73,6 +73,8 @@ def main() -> None:
     secrets = EnvSecrets()
 
     scoring_cfg = raw_cfg.get("scoring", {})
+    common_cfg = raw_cfg.get("common", {})
+    enable_pipeline_logging: bool = bool(common_cfg.get("pipeline_logging", True))
 
     pipeline = build_pipeline(
         raw_cfg.get("pipeline", _DEFAULT_PIPELINE),
@@ -82,6 +84,7 @@ def main() -> None:
         global_merge_prompt=scoring_cfg.get("openai_merge_prompt", ""),
         global_cluster_prompt=scoring_cfg.get("openai_cluster_prompt", ""),
         global_summarize_prompt=scoring_cfg.get("openai_summarize_prompt", ""),
+        enable_logging=enable_pipeline_logging,
     )
 
     source_reader = SourceReader(
@@ -139,6 +142,7 @@ def main() -> None:
             global_merge_prompt=scoring.get("openai_merge_prompt", ""),
             global_cluster_prompt=scoring.get("openai_cluster_prompt", ""),
             global_summarize_prompt=scoring.get("openai_summarize_prompt", ""),
+            enable_logging=bool(new_raw.get("common", {}).get("pipeline_logging", True)),
         )
 
         def _on_pipeline_init(ok: bool, err: str) -> None:
