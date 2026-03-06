@@ -599,6 +599,16 @@ class SetCronCommand(UICommand, ABC):
         self._app_state.config.write_value("common", common, on_written)
 
 
+# ── RestartCommand ─────────────────────────────────────────────────────────────
+
+class RestartCommand(UICommand, ABC):
+    """Exit the process so retry_run.sh can restart it."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+
 # ── ExplainCommand ─────────────────────────────────────────────────────────────
 
 class ExplainCommand(UICommand, ABC):

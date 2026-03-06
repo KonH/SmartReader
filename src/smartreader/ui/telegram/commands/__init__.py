@@ -1,5 +1,6 @@
 from .add_source import TelegramAddSourceCommand
 from .explain import TelegramExplainCommand
+from .restart import TelegramRestartCommand
 from .set_cluster_prompt import TelegramSetClusterPromptCommand
 from .set_cron import TelegramSetCronCommand
 from .set_interests_prompt import TelegramSetInterestsPromptCommand
@@ -26,4 +27,5 @@ __all__ = [
     "TelegramSetClusterPromptCommand",
     "TelegramSetPromptGroupCommand",
     "TelegramSetCronCommand",
+    "TelegramRestartCommand",
 ]

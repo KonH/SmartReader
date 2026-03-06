@@ -18,6 +18,7 @@ from ..commands import ShowContentCommand
 from .commands import (
     TelegramAddSourceCommand,
     TelegramExplainCommand,
+    TelegramRestartCommand,
     TelegramSetCronCommand,
     TelegramSetPromptGroupCommand,
     TelegramShowContentCommand,
@@ -51,6 +52,7 @@ _COMMAND_TYPES: list[type[UICommand]] = [
     TelegramSkipWordCommand,
     TelegramSetPromptGroupCommand,
     TelegramSetCronCommand,
+    TelegramRestartCommand,
 ]
 
 _MODE_TO_TITLE = {
@@ -63,6 +65,7 @@ _MODE_TO_TITLE = {
     "prompt": "prompt",
     "cron": "cron",
     "explain": "explain",
+    "restart": "restart",
 }
 
 

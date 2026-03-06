@@ -16,6 +16,7 @@ from ..commands import ShowContentCommand
 from .commands import (
     TerminalAddSourceCommand,
     TerminalExplainCommand,
+    TerminalRestartCommand,
     TerminalSetCronCommand,
     TerminalSetPromptGroupCommand,
     TerminalShowContentCommand,
@@ -40,6 +41,7 @@ _COMMAND_TYPES: list[type[UICommand]] = [
     TerminalSkipWordCommand,
     TerminalSetPromptGroupCommand,
     TerminalSetCronCommand,
+    TerminalRestartCommand,
 ]
 
 

@@ -1,5 +1,6 @@
 from .add_source import TerminalAddSourceCommand
 from .explain import TerminalExplainCommand
+from .restart import TerminalRestartCommand
 from .set_cluster_prompt import TerminalSetClusterPromptCommand
 from .set_cron import TerminalSetCronCommand
 from .set_interests_prompt import TerminalSetInterestsPromptCommand
@@ -26,4 +27,5 @@ __all__ = [
     "TerminalSetClusterPromptCommand",
     "TerminalSetPromptGroupCommand",
     "TerminalSetCronCommand",
+    "TerminalRestartCommand",
 ]

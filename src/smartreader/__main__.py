@@ -24,6 +24,7 @@ from .ui.command import UICommand
 from .ui.commands import (
     AddSourceCommand,
     ExplainCommand,
+    RestartCommand,
     SetCronCommand,
     SetPromptGroupCommand,
     ShowContentCommand,
@@ -45,6 +46,7 @@ _KNOWN_COMMAND_TYPES: list[type[UICommand]] = [
     ShowContentCommand,
     AddSourceCommand,
     ExplainCommand,
+    RestartCommand,
     ShowLogsCommand,
     ShowStateCommand,
     SkipWordCommand,
