@@ -147,9 +147,17 @@ let PD, COL_ITEMS, COL_ROW_OF, IS_HL = false, ZOOM = 1, ZOOM_W = 0, ZOOM_H = 0;
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function stripMd(s){
   s=String(s??'');
+  // [text](url) → text  (well-formed)
   s=s.replace(/\[([^\]\n]+)\]\(https?:\/\/[^\)\s]+\)/g,'$1');
+  // truncated/unclosed [text](url... → text
+  s=s.replace(/\[([^\]\n]+)\]\(https?:\/\/[^\)\s]*/g,'$1');
+  // **bold** → bold  (balanced first)
   s=s.replace(/\*\*(.+?)\*\*/g,'$1');
-  s=s.replace(/\*(.+?)\*/g,'$1');
+  // strip remaining unmatched **
+  s=s.replace(/\*\*/g,'');
+  // *italic* → italic
+  s=s.replace(/\*([^*\n]+)\*/g,'$1');
+  // `code` → code
   s=s.replace(/`([^`\n]+)`/g,'$1');
   return s;
 }

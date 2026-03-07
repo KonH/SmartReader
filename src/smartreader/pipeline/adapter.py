@@ -96,7 +96,7 @@ def build_pipeline(
     global_merge_prompt: str = "",
     global_cluster_prompt: str = "",
     global_summarize_prompt: str = "",
-    enable_logging: bool = True,
+    enable_logging: bool = False,
     on_circuit_trip: Callable[[str], None] | None = None,
     max_openai_request_repeat_count: int = 3,
 ) -> PipelineAdapter:

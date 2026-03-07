@@ -15,12 +15,16 @@ from ...types.content import Content
 
 def strip_md(text: str) -> str:
     """Strip common Markdown syntax for plain-text display in the terminal."""
-    # [link text](url) → link text
+    # [link text](url) → link text  (well-formed links)
     text = re.sub(r'\[([^\]\n]+)\]\(https?://[^\)\s]+\)', r'\1', text)
-    # **bold** → bold
+    # Truncated/unclosed [text](https://... without closing ) → just show link text
+    text = re.sub(r'\[([^\]\n]+)\]\(https?://[^\)\s]*', r'\1', text)
+    # **bold** → bold  (balanced pairs first)
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    # *italic* → italic
-    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    # Strip remaining unmatched **
+    text = text.replace('**', '')
+    # *italic* → italic  (balanced pairs)
+    text = re.sub(r'\*([^*\n]+)\*', r'\1', text)
     # `code` → code
     text = re.sub(r'`([^`\n]+)`', r'\1', text)
     return text

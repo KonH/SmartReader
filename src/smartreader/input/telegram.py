@@ -175,7 +175,7 @@ class TelegramReader:
                 continue
 
             lines = message.text.strip().splitlines()
-            title = lines[0][:200] if lines else ""
+            title = lines[0] if lines else ""
             items.append(Content(
                 id=f"tg_{source.external_id}_{message.id}",
                 title=title,

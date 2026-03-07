@@ -25,10 +25,14 @@ def md_to_html(text: str) -> str:
     Single-star italic is intentionally skipped to avoid false positives.
     """
     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    # [link text](https://...) → <a href="...">link text</a>
+    # [link text](https://...) → <a href="...">link text</a>  (full, well-formed links)
     text = re.sub(r'\[([^\]\n]+)\]\((https?://[^\)\s]+)\)', r'<a href="\2">\1</a>', text)
+    # Truncated/unclosed [text](https://... without closing ) → just show link text
+    text = re.sub(r'\[([^\]\n]+)\]\(https?://[^\)\s]*', r'\1', text)
     # **bold** → <b>bold</b>
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    # Strip remaining unmatched ** (e.g. unclosed bold markers from channel authors)
+    text = text.replace('**', '')
     # `code` → <code>code</code>
     text = re.sub(r'`([^`\n]+)`', r'<code>\1</code>', text)
     return text
