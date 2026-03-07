@@ -19,6 +19,9 @@ class SummarizeStage(PipelineStage):
 
     def process(self, items: list[Content]) -> list[Content]:
         for item in items:
+            if item.related_ids:
+                logger.info("skipping summarize for merged item %r", item.id)
+                continue
             summary: list[str | None] = [item.summary]
 
             def on_done(

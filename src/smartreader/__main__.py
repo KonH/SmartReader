@@ -79,6 +79,26 @@ def main() -> None:
     scoring_cfg = raw_cfg.get("scoring", {})
     common_cfg = raw_cfg.get("common", {})
     enable_pipeline_logging: bool = bool(common_cfg.get("pipeline_logging", True))
+    max_openai_request_repeat_count: int = int(common_cfg.get("max_openai_request_repeat_count", 3))
+
+    if raw_cfg.get("telegram_ui", {}).get("active"):
+        logger.info("using TelegramUI")
+        shared: object = TelegramSharedUIState()
+        ui: UI = TelegramUI(shared)
+    else:
+        shared = TerminalSharedUIState()
+        ui = TerminalUI(shared)
+
+    def _on_circuit_trip(message: str) -> None:
+        logger.error("LLM circuit trip: %s", message)
+        if isinstance(shared, TelegramSharedUIState):
+            from .ui.telegram.common import load_last_chat, run_async, async_send_text
+            last_chat = load_last_chat()
+            if last_chat:
+                run_async(shared, async_send_text(shared, last_chat, f"⚠️ Safety shutdown: {message}"))
+        else:
+            print(f"Safety shutdown: {message}", file=sys.stderr)
+        sys.exit(1)
 
     pipeline = build_pipeline(
         raw_cfg.get("pipeline", _DEFAULT_PIPELINE),
@@ -89,6 +109,8 @@ def main() -> None:
         global_cluster_prompt=scoring_cfg.get("openai_cluster_prompt", ""),
         global_summarize_prompt=scoring_cfg.get("openai_summarize_prompt", ""),
         enable_logging=enable_pipeline_logging,
+        on_circuit_trip=_on_circuit_trip,
+        max_openai_request_repeat_count=max_openai_request_repeat_count,
     )
 
     source_reader = SourceReader(
@@ -102,14 +124,6 @@ def main() -> None:
         pipeline=pipeline,
         input=source_reader,
     )
-
-    if raw_cfg.get("telegram_ui", {}).get("active"):
-        logger.info("using TelegramUI")
-        shared: object = TelegramSharedUIState()
-        ui: UI = TelegramUI(shared)
-    else:
-        shared = TerminalSharedUIState()
-        ui = TerminalUI(shared)
 
     # Instantiate only commands that the UI supports and that are in our known set
     ui_cmd_types = ui.get_commands()
@@ -147,6 +161,8 @@ def main() -> None:
             global_cluster_prompt=scoring.get("openai_cluster_prompt", ""),
             global_summarize_prompt=scoring.get("openai_summarize_prompt", ""),
             enable_logging=bool(new_raw.get("common", {}).get("pipeline_logging", True)),
+            on_circuit_trip=_on_circuit_trip,
+            max_openai_request_repeat_count=int(new_raw.get("common", {}).get("max_openai_request_repeat_count", 3)),
         )
 
         def _on_pipeline_init(ok: bool, err: str) -> None:
@@ -214,13 +230,19 @@ def main() -> None:
         if not ok:
             logger.error("init failed: %s", err)
             sys.exit(1)
+        logger.info("init: cron update starting")
         cron_expr: str = raw_cfg.get("common", {}).get("cron_schedule", "")
         if cron_expr:
             app_state.update_cron(cron_expr)
+        logger.info("init: cron updated")
+        logger.info("init: coordinator run starting")
         coordinator.run(commands)
+        logger.info("init: coordinator run finished")
 
     try:
+        logger.info("init: coordinator initialize starting")
         coordinator.initialize(on_init)
+        logger.info("init: coordinator initialize finished")
     except KeyboardInterrupt:
         print()
         sys.exit(0)

@@ -1,8 +1,10 @@
 import logging
+from typing import Callable
 
 import openai
 
 from .._types import Callback, ScoreCallback
+from ..llm.client import LLMClient
 from ..secrets import Secrets
 from ..state import State
 from ..types.content import Content
@@ -32,7 +34,14 @@ _PENDING_KEY = "openai_scoring_pending_actions"
 
 
 class OpenAIScoring(Scoring):
-    def __init__(self, state: State, secrets: Secrets, entry: dict) -> None:
+    def __init__(
+        self,
+        state: State,
+        secrets: Secrets,
+        entry: dict,
+        max_repeat_count: int = 3,
+        on_circuit_trip: Callable[[str], None] | None = None,
+    ) -> None:
         self._state = state
         self._secrets = secrets
         self._prompt: str = entry.get("prompt", _DEFAULT_PROMPT)
@@ -41,18 +50,26 @@ class OpenAIScoring(Scoring):
         self._model: str = entry.get("model", "gpt-4o-mini")
         self._summary: str = ""
         self._pending: list[dict] = []
-        self._client: openai.OpenAI | None = None
+        self._max_repeat_count = max_repeat_count
+        self._on_circuit_trip = on_circuit_trip
+        self._llm: LLMClient | None = None
 
     def initialize(self, callback: Callback) -> None:
         logger.info("OpenAIScoring initializing")
+
         def on_key(ok: bool, err: str, key: str = "") -> None:
             logger.info("OpenAIScoring initializing: on_key")
             if not ok:
                 callback(False, f"OpenAI API key not available: {err}")
                 return
             logger.info("OpenAIScoring initializing: on_key: success")
-            self._client = openai.OpenAI(api_key=key)
-            logger.info("OpenAIScoring initializing: on_key: client created")   
+            self._llm = LLMClient(
+                client=openai.OpenAI(api_key=key),
+                name="openai_score",
+                max_repeat_count=self._max_repeat_count,
+                on_circuit_trip=self._on_circuit_trip,
+            )
+            logger.info("OpenAIScoring initializing: on_key: client created")
             self._state.read_value(
                 _SUMMARY_KEY,
                 lambda ok2, err2, val2: _on_summary(ok2, val2),
@@ -83,6 +100,10 @@ class OpenAIScoring(Scoring):
 
         self._secrets.read_value("OPENAI_API_KEY", on_key)
 
+    def reset_run(self) -> None:
+        if self._llm is not None:
+            self._llm.reset_run()
+
     def _update_summary(self, callback: Callback) -> None:
         logger.info("OpenAIScoring _update_summary")
         lines = []
@@ -98,47 +119,50 @@ class OpenAIScoring(Scoring):
         logger.info("OpenAIScoring _update_summary: current profile length: %s", len(current))
         prompt = self._interests_prompt.format(current_profile=current, actions_text=actions_text)
         logger.info("OpenAIScoring _update_summary: prompt length: %s", len(prompt))
-        try:
-            assert self._client is not None
-            logger.info("OpenAIScoring _update_summary: calling chat.completions.create")
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            logger.info("OpenAIScoring _update_summary: chat.completions.create: response received")
-            new_summary = (resp.choices[0].message.content or "").strip()
-            logger.info("OpenAIScoring _update_summary: chat.completions.create: new summary length: %s", len(new_summary))
-        except Exception as e:
-            logger.warning("OpenAI summary update failed: %s", e)
-            callback(True, "")
-            return
 
-        self._summary = new_summary
-        logger.info("OpenAI preference summary updated")
+        assert self._llm is not None
 
-        def _on_pending_cleared(ok: bool, err: str) -> None:
-            logger.info("OpenAIScoring _update_summary: on_pending_cleared")
+        def on_resp(ok: bool, err: str, text: str) -> None:
+            logger.info("OpenAIScoring _update_summary: on_resp ok=%s", ok)
             if not ok:
-                logger.warning("failed to clear OpenAI pending actions: %s", err)
-            self._pending = []
-            logger.info("OpenAIScoring _update_summary: on_pending_cleared: pending actions cleared")
-            callback(True, "")
+                logger.warning("OpenAI summary update failed: %s", err)
+                callback(True, "")
+                return
 
-        def _on_summary_saved(ok: bool, err: str) -> None:
-            logger.info("OpenAIScoring _update_summary: on_summary_saved")
-            if not ok:
-                logger.warning("failed to save OpenAI summary: %s", err)
-            logger.info("OpenAIScoring _update_summary: on_summary_saved: clearing pending actions")
+            new_summary = text
+            self._summary = new_summary
+            logger.info("OpenAI preference summary updated")
+
+            def _on_pending_cleared(ok2: bool, err2: str) -> None:
+                logger.info("OpenAIScoring _update_summary: on_pending_cleared")
+                if not ok2:
+                    logger.warning("failed to clear OpenAI pending actions: %s", err2)
+                self._pending = []
+                logger.info("OpenAIScoring _update_summary: on_pending_cleared: pending actions cleared")
+                callback(True, "")
+
+            def _on_summary_saved(ok2: bool, err2: str) -> None:
+                logger.info("OpenAIScoring _update_summary: on_summary_saved")
+                if not ok2:
+                    logger.warning("failed to save OpenAI summary: %s", err2)
+                logger.info("OpenAIScoring _update_summary: on_summary_saved: clearing pending actions")
+                self._state.write_value(
+                    _PENDING_KEY,
+                    {"actions": []},
+                    _on_pending_cleared,
+                )
+
             self._state.write_value(
-                _PENDING_KEY,
-                {"actions": []},
-                _on_pending_cleared,
+                _SUMMARY_KEY,
+                {"text": new_summary},
+                _on_summary_saved,
             )
 
-        self._state.write_value(
-            _SUMMARY_KEY,
-            {"text": new_summary},
-            _on_summary_saved,
+        logger.info("OpenAIScoring _update_summary: calling LLMClient.call")
+        self._llm.call(
+            self._model,
+            [{"role": "user", "content": prompt}],
+            on_resp,
         )
 
     def score(self, content: Content, effort_level: int, callback: ScoreCallback) -> None:
@@ -151,24 +175,25 @@ class OpenAIScoring(Scoring):
         if self._summary:
             system += f"\n\nUser preferences:\n{self._summary}"
 
-        try:
-            assert self._client is not None
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": text},
-                ],
-            )
-            raw = (resp.choices[0].message.content or "").strip()
-            value = float(raw)
-            value = max(-1.0, min(1.0, value))
-            score = value * self._score_factor
-        except Exception as e:
-            callback(False, str(e))
-            return
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": text},
+        ]
 
-        callback(True, "", score)
+        assert self._llm is not None
+
+        def on_resp(ok: bool, err: str, raw: str) -> None:
+            if not ok:
+                callback(False, err)
+                return
+            try:
+                value = float(raw)
+                value = max(-1.0, min(1.0, value))
+                callback(True, "", value * self._score_factor)
+            except (ValueError, TypeError) as e:
+                callback(False, str(e))
+
+        self._llm.call(self._model, messages, on_resp)
 
     def update_score(self, content: Content, upvote: bool, callback: Callback) -> None:
         action = {

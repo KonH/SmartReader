@@ -48,6 +48,7 @@ class Coordinator:
             SecretsParams(),
             lambda ok, err: self._init_config(ok, err, callback),
         )
+        logger.info("secrets initialized")
 
     def _init_config(self, ok: bool, err: str, callback: Callback) -> None:
         if not ok:
@@ -55,6 +56,7 @@ class Coordinator:
             return
         logger.info("initializing config")
         self._config.load(ConfigParams(), lambda ok2, err2: self._init_state(ok2, err2, callback))
+        logger.info("config initialized")
 
     def _init_state(self, ok: bool, err: str, callback: Callback) -> None:
         if not ok:
@@ -62,6 +64,7 @@ class Coordinator:
             return
         logger.info("initializing state")
         self._state.load(ConfigParams(), lambda ok2, err2: self._init_pipeline(ok2, err2, callback))
+        logger.info("state initialized")
 
     def _init_pipeline(self, ok: bool, err: str, callback: Callback) -> None:
         if not ok:
@@ -69,6 +72,7 @@ class Coordinator:
             return
         logger.info("initializing pipeline")
         self._pipeline.initialize(lambda ok2, err2: self._init_ui(ok2, err2, callback))
+        logger.info("pipeline initialized")
 
     def _live_feedback(self, content: Content, upvote: bool) -> None:
         """Handle asynchronous inline vote from TelegramUI."""
@@ -86,6 +90,7 @@ class Coordinator:
             UIParams(live_feedback=self._live_feedback),
             lambda ok2, err2: self._init_input(ok2, err2, callback),
         )
+        logger.info("ui initialized")
 
     def _init_input(self, ok: bool, err: str, callback: Callback) -> None:
         if not ok:

@@ -3,11 +3,14 @@
 
 # ── Common settings ──────────────────────────────────────────────────────────
 # [common]
-# initial_days_scan_interval = 7   # Days to scan back on first run per source
-# cron_schedule = "0 8 * * *"      # Automatic show schedule (cron syntax); absent or empty = disabled
-#                                  # Editable at runtime via the 'cron' command.
-#                                  # Format: minute hour day-of-month month day-of-week
-#                                  # Reference: https://crontab.guru/
+# initial_days_scan_interval = 7        # Days to scan back on first run per source
+# cron_schedule = "0 8 * * *"           # Automatic show schedule (cron syntax); absent or empty = disabled
+#                                       # Editable at runtime via the 'cron' command.
+#                                       # Format: minute hour day-of-month month day-of-week
+#                                       # Reference: https://crontab.guru/
+# pipeline_stats_max_entries = 100      # Max pipeline timing records kept in state; used to estimate duration
+# max_openai_request_repeat_count = 3   # Max times the same OpenAI request may be sent per pipeline run;
+#                                       # exceeding this trips the circuit: UI notified, process exits.
 
 [scoring]
 upvote_power = 1.5    # Interest delta applied on upvote

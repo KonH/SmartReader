@@ -107,11 +107,66 @@ class ShowContentCommand(UICommand, ABC):
             logger.info("no new content")
             return []
 
+        # Read existing stats and compute time estimate
+        stats_raw: list[object] = [{}]
+
+        def on_stats(ok: bool, err: str, val: object) -> None:
+            stats_raw[0] = val if ok else {}
+
+        self._app_state._state.read_value("pipeline_stats", on_stats)
+        stats: list[dict] = []
+        if isinstance(stats_raw[0], dict):
+            stats = [e for e in stats_raw[0].get("entries", []) if isinstance(e, dict)]
+
+        estimated_seconds: float | None = None
+        if stats:
+            total_elapsed = sum(float(e.get("elapsed", 0)) for e in stats)
+            total_items = sum(int(e.get("items_in", 0)) for e in stats)
+            if total_items > 0:
+                estimated_seconds = (total_elapsed / total_items) * len(all_items)
+
+        self._before_pipeline(len(all_items), estimated_seconds)
+
         logger.info("read %d item(s), starting pipeline", len(all_items))
+        t0 = time.time()
         final_candidates = self._app_state.pipeline.process(all_items)
+        elapsed = time.time() - t0
+        logger.info("pipeline finished in %.1fs (%d→%d items)", elapsed, len(all_items), len(final_candidates))
+
+        # Save stats entry (capped to max_entries)
+        max_entries_val: list[int] = [100]
+
+        def on_common_cfg(ok: bool, err: str, val: object) -> None:
+            if ok and isinstance(val, dict):
+                max_entries_val[0] = int(val.get("pipeline_stats_max_entries", 100))
+
+        self._app_state.config.read_value("common", on_common_cfg)
+        stats.append({
+            "ts": time.time(),
+            "elapsed": elapsed,
+            "items_in": len(all_items),
+            "items_out": len(final_candidates),
+        })
+        max_entries = max_entries_val[0]
+        if len(stats) > max_entries:
+            stats = stats[-max_entries:]
+        self._app_state._state.write_value(
+            "pipeline_stats",
+            {"entries": stats},
+            lambda ok, err: logger.error("pipeline_stats write: %s", err) if not ok else None,
+        )
+
         final = sorted(final_candidates, key=lambda c: c.published_ts)
         self._app_state.shown_items = final
         return final
+
+    def _before_pipeline(self, item_count: int, estimated_seconds: float | None) -> None:
+        """Called after sources are read, before the pipeline runs.
+
+        Override in concrete subclasses to surface the estimation to the user.
+        """
+        if estimated_seconds is not None:
+            logger.info("pipeline estimate: %d item(s), ~%s", item_count, _fmt_seconds(estimated_seconds))
 
     def _update_source_states(self) -> None:
         """Write lastReadTs for all successfully-read sources."""
@@ -646,6 +701,14 @@ class SetPromptGroupCommand(UICommandGroup, ABC):
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _fmt_seconds(seconds: float) -> str:
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    m, sec = divmod(s, 60)
+    return f"{m}m {sec:02d}s"
+
 
 def _filter_by_category(sources_val: dict, category: str | None) -> list[str]:
     if category is None:

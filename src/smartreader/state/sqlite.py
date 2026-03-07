@@ -46,6 +46,7 @@ class SQLiteState(State):
             )
             callback(True, "")
         except Exception as e:
+            logger.error("SQLiteState load error: %s", e)
             callback(False, str(e))
 
     def read_value(self, key: str, callback: StateValueCallback) -> None:
@@ -56,6 +57,7 @@ class SQLiteState(State):
             val: StateValue = json.loads(row[0]) if row else {}
             callback(True, "", val)
         except Exception as e:
+            logger.error("SQLiteState read_value error: %s", e)
             callback(False, str(e), {})
 
     def write_value(self, key: str, value: StateValue, callback: Callback) -> None:
@@ -67,6 +69,7 @@ class SQLiteState(State):
             self._conn.commit()  # type: ignore[union-attr]
             callback(True, "")
         except Exception as e:
+            logger.error("SQLiteState write_value error: %s", e)
             callback(False, str(e))
 
     def read_all(self, callback: AllStateCallback) -> None:
@@ -75,6 +78,7 @@ class SQLiteState(State):
             result: dict[str, StateValue] = {key: json.loads(val) for key, val in rows}
             callback(True, "", result)
         except Exception as e:
+            logger.error("SQLiteState read_all error: %s", e)
             callback(False, str(e), {})
 
     def save(self, callback: Callback) -> None:

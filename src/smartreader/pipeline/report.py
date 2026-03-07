@@ -142,7 +142,7 @@ a{color:#3b82f6}
 
 _JS = r"""
 // ── Globals ───────────────────────────────────────────────────────────────────
-let PD, COL_ITEMS, COL_ROW_OF, IS_HL = false;
+let PD, COL_ITEMS, COL_ROW_OF, IS_HL = false, ZOOM = 1, ZOOM_W = 0, ZOOM_H = 0;
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -188,8 +188,12 @@ function processData(){
     return{prevCount:prevIds.size,outCount:s.output.length,created,dropped};
   });
 
-  // Per-column sorted arrays and rowOf maps (sort by score desc within each column)
-  const cols=[[...input].sort(byScore), ...stages.map(s=>[...s.output].sort(byScore))];
+  // Per-column sorted arrays and rowOf maps — sort by last-known score (stable across columns)
+  const lastScore={};
+  for(const it of input)if(it.score!=null)lastScore[it.id]=it.score;
+  for(const s of stages)for(const it of s.output)if(it.score!=null)lastScore[it.id]=it.score;
+  function byLastScore(a,b){return(lastScore[b.id]??-Infinity)-(lastScore[a.id]??-Infinity)}
+  const cols=[[...input].sort(byLastScore),...stages.map(s=>[...s.output].sort(byLastScore))];
   const colRowOf=cols.map(items=>Object.fromEntries(items.map((item,i)=>[item.id,i])));
 
   return{input,stages,inputById,stageById,inputIdSet,outcomes,mergedIntoMap,mergeStageMap,stageStats,cols,colRowOf};
@@ -240,6 +244,12 @@ function renderPipeline(pd){
   const cont=document.getElementById('pipeline-container');
   cont.style.width=totalW+'px';
   cont.style.height=totalH+'px';
+  cont.style.transformOrigin='top left';
+  cont.style.transform=`scale(${ZOOM})`;
+  ZOOM_W=totalW; ZOOM_H=totalH;
+  const wrap=document.getElementById('pipeline-zoom-wrap');
+  wrap.style.width=Math.round(totalW*ZOOM)+'px';
+  wrap.style.height=Math.round(totalH*ZOOM)+'px';
   cont.innerHTML='';
   cont.addEventListener('click',()=>clearHighlight());
 
@@ -522,10 +532,31 @@ function closeDetail(){
   clearHighlight();
 }
 
+// ── Pinch zoom ────────────────────────────────────────────────────────────────
+function initPinch(){
+  const scroll=document.getElementById('pipeline-scroll');
+  let d0=0,z0=1;
+  function dist(t){return Math.hypot(t[1].clientX-t[0].clientX,t[1].clientY-t[0].clientY)}
+  scroll.addEventListener('touchstart',e=>{
+    if(e.touches.length===2){d0=dist(e.touches);z0=ZOOM;e.preventDefault()}
+  },{passive:false});
+  scroll.addEventListener('touchmove',e=>{
+    if(e.touches.length!==2)return;
+    e.preventDefault();
+    ZOOM=Math.min(2.5,Math.max(0.25,z0*dist(e.touches)/d0));
+    const wrap=document.getElementById('pipeline-zoom-wrap');
+    const cont=document.getElementById('pipeline-container');
+    wrap.style.width=Math.round(ZOOM_W*ZOOM)+'px';
+    wrap.style.height=Math.round(ZOOM_H*ZOOM)+'px';
+    cont.style.transform=`scale(${ZOOM})`;
+  },{passive:false});
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 PD=processData();
 renderInputHeader(PD);
 renderPipeline(PD);
+initPinch();
 """
 
 # ── HTML template ──────────────────────────────────────────────────────────────
@@ -558,7 +589,7 @@ def _render_html(data: dict) -> str:
 
   <div id="pipeline-section">
     <div id="pipeline-scroll">
-      <div id="pipeline-container"></div>
+      <div id="pipeline-zoom-wrap" style="position:relative;display:inline-block"><div id="pipeline-container"></div></div>
     </div>
   </div>
 </div>

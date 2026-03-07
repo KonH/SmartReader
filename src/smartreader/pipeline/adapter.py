@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from .._types import Callback
 from ..config import Config
@@ -97,6 +97,8 @@ def build_pipeline(
     global_cluster_prompt: str = "",
     global_summarize_prompt: str = "",
     enable_logging: bool = True,
+    on_circuit_trip: Callable[[str], None] | None = None,
+    max_openai_request_repeat_count: int = 3,
 ) -> PipelineAdapter:
     """Build a PipelineAdapter from a list of stage entry dicts."""
     from .stages.keyword_score import KeywordScoreStage
@@ -137,7 +139,7 @@ def build_pipeline(
                     effective_entry["prompt"] = global_prompt
                 if "interests_prompt" not in effective_entry and global_interests_prompt:
                     effective_entry["interests_prompt"] = global_interests_prompt
-                stages.append(OpenAIScoreStage(state, secrets, effective_entry))
+                stages.append(OpenAIScoreStage(state, secrets, effective_entry, max_openai_request_repeat_count, on_circuit_trip))
                 stage_configs.append((t, {
                     k: effective_entry[k]
                     for k in ("prompt", "interests_prompt", "score_factor", "model")
@@ -157,7 +159,7 @@ def build_pipeline(
             if secrets is None:
                 logger.warning("openai_summarize stage requires secrets; skipping (no secrets provided)")
             else:
-                stages.append(OpenAISummarizeStage(secrets, entry, global_summarize_prompt))
+                stages.append(OpenAISummarizeStage(secrets, entry, global_summarize_prompt, max_openai_request_repeat_count, on_circuit_trip))
                 stage_configs.append((t, {
                     k: entry[k] for k in ("model", "prompt") if k in entry
                 }))
@@ -182,7 +184,7 @@ def build_pipeline(
             if secrets is None:
                 logger.warning("merge_content stage requires secrets; skipping (no secrets provided)")
             else:
-                stages.append(MergeContentStage(state, secrets, entry, global_merge_prompt, global_cluster_prompt))
+                stages.append(MergeContentStage(secrets, entry, global_merge_prompt, global_cluster_prompt, max_openai_request_repeat_count, on_circuit_trip))
                 stage_configs.append((t, {
                     k: entry[k] for k in ("model", "prompt", "cluster_prompt") if k in entry
                 }))

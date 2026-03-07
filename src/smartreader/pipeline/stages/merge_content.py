@@ -4,9 +4,13 @@ import hashlib
 import json
 import logging
 from collections import Counter
+from typing import Callable
+
+import openai
+
 from ..._types import Callback
+from ...llm.client import LLMClient
 from ...secrets import Secrets
-from ...state import State
 from ...types.content import Content
 from .. import PipelineStage
 
@@ -28,26 +32,32 @@ Reply ONLY with the JSON array."""
 class MergeContentStage(PipelineStage):
     def __init__(
         self,
-        state: State,
         secrets: Secrets,
         entry: dict,
         global_merge_prompt: str = "",
         global_cluster_prompt: str = "",
+        max_repeat_count: int = 3,
+        on_circuit_trip: Callable[[str], None] | None = None,
     ) -> None:
-        self._state = state
         self._secrets = secrets
         self._model: str = entry.get("model", "gpt-4o-mini")
         self._merge_prompt: str = entry.get("prompt", "") or global_merge_prompt or _DEFAULT_MERGE_PROMPT
         self._cluster_prompt: str = entry.get("cluster_prompt", "") or global_cluster_prompt or _CLUSTER_PROMPT
-        self._client = None  # openai.OpenAI
+        self._max_repeat_count = max_repeat_count
+        self._on_circuit_trip = on_circuit_trip
+        self._llm: LLMClient | None = None
 
     def initialize(self, callback: Callback) -> None:
         def on_key(ok: bool, err: str, key: str = "") -> None:
             if not ok:
                 callback(False, f"MergeContentStage: OPENAI_API_KEY not available: {err}")
                 return
-            import openai
-            self._client = openai.OpenAI(api_key=key)
+            self._llm = LLMClient(
+                client=openai.OpenAI(api_key=key),
+                name="openai_merge",
+                max_repeat_count=self._max_repeat_count,
+                on_circuit_trip=self._on_circuit_trip,
+            )
             callback(True, "")
 
         self._secrets.read_value("OPENAI_API_KEY", on_key)
@@ -55,6 +65,9 @@ class MergeContentStage(PipelineStage):
     def process(self, items: list[Content]) -> list[Content]:
         if len(items) < 2:
             return items
+
+        assert self._llm is not None
+        self._llm.reset_run()
 
         clusters = self._cluster_articles(items)
         if not clusters:
@@ -79,47 +92,62 @@ class MergeContentStage(PipelineStage):
         titles_text = "\n".join(
             f"{i}. {item.title}" for i, item in enumerate(items)
         )
-        try:
-            assert self._client is not None
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": self._cluster_prompt},
-                    {"role": "user", "content": titles_text},
-                ],
-            )
-            raw = (resp.choices[0].message.content or "").strip()
-            groups = json.loads(raw)
-            if not isinstance(groups, list):
-                return []
-            result: list[list[int]] = []
-            n = len(items)
-            for group in groups:
-                if isinstance(group, list) and len(group) >= 2:
-                    valid = [int(i) for i in group if isinstance(i, int) and 0 <= i < n]
-                    if len(valid) >= 2:
-                        result.append(valid)
-            return result
-        except Exception as e:
-            logger.warning("MergeContentStage: clustering failed: %s", e)
-            return []
+        result: list[list[int]] = []
+
+        assert self._llm is not None
+
+        def on_resp(ok: bool, err: str, text: str) -> None:
+            if not ok:
+                logger.warning("MergeContentStage: clustering failed: %s", err)
+                return
+            try:
+                groups = json.loads(text)
+                if not isinstance(groups, list):
+                    return
+                n = len(items)
+                for group in groups:
+                    if isinstance(group, list) and len(group) >= 2:
+                        valid = [int(i) for i in group if isinstance(i, int) and 0 <= i < n]
+                        if len(valid) >= 2:
+                            result.append(valid)
+            except Exception as e:
+                logger.warning("MergeContentStage: clustering parse failed: %s", e)
+
+        self._llm.call(
+            self._model,
+            [
+                {"role": "system", "content": self._cluster_prompt},
+                {"role": "user", "content": titles_text},
+            ],
+            on_resp,
+        )
+        return result
 
     def _merge_cluster(self, items: list[Content]) -> Content | None:
         combined = "\n\n---\n\n".join(
             f"Title: {item.title}\n{item.body or item.summary or ''}" for item in items
         )
-        try:
-            assert self._client is not None
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": self._merge_prompt},
-                    {"role": "user", "content": combined},
-                ],
-            )
-            raw = (resp.choices[0].message.content or "").strip()
-        except Exception as e:
-            logger.warning("MergeContentStage: merge failed: %s", e)
+        result: list[str | None] = [None]
+
+        assert self._llm is not None
+
+        def on_resp(ok: bool, err: str, text: str) -> None:
+            if not ok:
+                logger.warning("MergeContentStage: merge failed: %s", err)
+                return
+            result[0] = text
+
+        self._llm.call(
+            self._model,
+            [
+                {"role": "system", "content": self._merge_prompt},
+                {"role": "user", "content": combined},
+            ],
+            on_resp,
+        )
+
+        raw = result[0]
+        if raw is None:
             return None
 
         lines = raw.splitlines()
@@ -138,7 +166,6 @@ class MergeContentStage(PipelineStage):
         if scores:
             avg_score = sum(scores) / len(scores)
 
-        # Pick most common category
         cats = [item.category for item in items if item.category]
         category: str | None = Counter(cats).most_common(1)[0][0] if cats else None
 

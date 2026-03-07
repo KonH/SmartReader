@@ -1,4 +1,5 @@
 import logging
+from typing import Callable
 
 from ..._types import Callback
 from ...secrets import Secrets
@@ -12,15 +13,29 @@ logger = logging.getLogger(__name__)
 class OpenAISummarizeStage(PipelineStage):
     """Summarizes each item using OpenAI."""
 
-    def __init__(self, secrets: Secrets, entry: dict, global_prompt: str = "") -> None:
+    def __init__(
+        self,
+        secrets: Secrets,
+        entry: dict,
+        global_prompt: str = "",
+        max_repeat_count: int = 3,
+        on_circuit_trip: Callable[[str], None] | None = None,
+    ) -> None:
         prompt = entry.get("prompt", "") or global_prompt
         model = entry.get("model", "gpt-4o-mini")
-        self._inner = OpenAISummarize(secrets=secrets, prompt=prompt, model=model)
+        self._inner = OpenAISummarize(
+            secrets=secrets,
+            prompt=prompt,
+            model=model,
+            max_repeat_count=max_repeat_count,
+            on_circuit_trip=on_circuit_trip,
+        )
 
     def initialize(self, callback: Callback) -> None:
         self._inner.initialize(callback)
 
     def process(self, items: list[Content]) -> list[Content]:
+        self._inner.reset_run()
         for item in items:
             summary: list[str | None] = [item.summary]
 
