@@ -20,6 +20,17 @@ class TelegramShowContentCommand(ShowContentCommand):
     def control_title(self) -> str:
         return "show"
 
+    def _before_pipeline(self, item_count: int, estimated_seconds: float | None) -> None:
+        from ...commands import _fmt_seconds
+        sender_id = self._tg.current_sender_id
+        if sender_id is None:
+            return
+        if estimated_seconds is None:
+            msg = f"Processing {item_count} item(s)\u2026"
+        else:
+            msg = f"Processing {item_count} item(s), ~{_fmt_seconds(estimated_seconds)} estimated\u2026"
+        run_async(self._tg, async_send_text(self._tg, sender_id, msg))
+
     def execute(self) -> None:
         sender_id = self._tg.current_sender_id
         items = self._run_pipeline(self._app_state.trigger_category)
