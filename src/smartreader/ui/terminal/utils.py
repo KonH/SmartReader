@@ -1,14 +1,29 @@
 """Rendering helpers for the Terminal UI."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from rich import box
 from rich.console import Console
+from rich.markup import escape as rich_escape
 from rich.table import Table
 
 from ...types.app_state import AppStateData
 from ...types.content import Content
+
+
+def strip_md(text: str) -> str:
+    """Strip common Markdown syntax for plain-text display in the terminal."""
+    # [link text](url) → link text
+    text = re.sub(r'\[([^\]\n]+)\]\(https?://[^\)\s]+\)', r'\1', text)
+    # **bold** → bold
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    # *italic* → italic
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    # `code` → code
+    text = re.sub(r'`([^`\n]+)`', r'\1', text)
+    return text
 
 
 def render_content_table(content: list[Content], console: Console) -> None:
@@ -34,17 +49,17 @@ def render_content_table(content: list[Content], console: Console) -> None:
         score_str = f"{item.score:.2f}" if item.score is not None else "—"
         date_str = datetime.fromtimestamp(item.published_ts).strftime("%b %d %H:%M")
         text = item.summary or item.body
-        summary_str = text
+        summary_str = rich_escape(strip_md(text)) if text else ""
 
         if item.related_ids:
-            title_display = f"🔀 {item.title}"
+            title_display = f"🔀 {rich_escape(strip_md(item.title))}"
             sources_lines = []
             for related in item.related_contents:
-                src_label = f"  • {related.title} [{related.source_id}]"
+                src_label = f"  • {rich_escape(strip_md(related.title))} [{related.source_id}]"
                 sources_lines.append(src_label)
             source_display = "merged\n" + "\n".join(sources_lines) if sources_lines else "merged"
         else:
-            title_display = item.title
+            title_display = rich_escape(strip_md(item.title))
             source_display = item.source_id
 
         table.add_row(str(i), date_str, score_str, title_display, source_display, summary_str)

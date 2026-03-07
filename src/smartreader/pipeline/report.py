@@ -109,8 +109,7 @@ a{color:#3b82f6}
 .detail-panel.open{transform:translateX(0)}
 .det-hdr{padding:14px 16px;border-bottom:1px solid #e2e8f0;
   display:flex;align-items:center;justify-content:space-between;background:#f8fafc}
-.det-title{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap;flex:1;padding-right:8px}
+.det-title{font-weight:700;font-size:13px;flex:1;padding-right:8px;word-break:break-word}
 .close-btn{background:none;border:none;cursor:pointer;font-size:16px;color:#718096;
   border-radius:4px;padding:2px 6px}
 .close-btn:hover{background:#e2e8f0}
@@ -146,6 +145,14 @@ let PD, COL_ITEMS, COL_ROW_OF, IS_HL = false, ZOOM = 1, ZOOM_W = 0, ZOOM_H = 0;
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function stripMd(s){
+  s=String(s??'');
+  s=s.replace(/\[([^\]\n]+)\]\(https?:\/\/[^\)\s]+\)/g,'$1');
+  s=s.replace(/\*\*(.+?)\*\*/g,'$1');
+  s=s.replace(/\*(.+?)\*/g,'$1');
+  s=s.replace(/`([^`\n]+)`/g,'$1');
+  return s;
+}
 function fmtTs(e){return e?new Date(e*1000).toLocaleString():'—'}
 function byScore(a,b){return(b.score??-Infinity)-(a.score??-Infinity)}
 function scoreDelta(p,c){
@@ -155,7 +162,7 @@ function scoreDelta(p,c){
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
-const CARD_H=78, ROW_STRIDE=88, HDR_H=56, COL_W=230, CONN_W=60, PAD_B=28;
+const CARD_H=78, ROW_STRIDE=88, HDR_H=56, COL_W=230, CONN_W=180, PAD_B=28;
 function cx(col){return col*(COL_W+CONN_W)}
 function cy(row){return HDR_H+row*ROW_STRIDE}
 
@@ -173,6 +180,20 @@ function processData(){
         for(const rid of item.related_ids)if(!mergedIntoMap[rid])mergedIntoMap[rid]=item.id;
       }
 
+  // Assign a unique color per merge group; singles get no entry (render gray)
+  const _GC=['#8b5cf6','#06b6d4','#10b981','#f97316','#ec4899','#6366f1','#14b8a6','#f59e0b'];
+  const groupColorOf={};
+  {let ci=0; const seen={};
+    for(let si=0;si<stages.length;si++)
+      for(const item of stages[si].output)
+        if(item.related_ids?.length&&!seen[item.id]){
+          seen[item.id]=1;
+          const c=_GC[ci++%_GC.length];
+          groupColorOf[item.id]=c;
+          for(const rid of item.related_ids)groupColorOf[rid]=c;
+        }
+  }
+
   const inputIdSet=new Set(input.map(i=>i.id));
   const lastIds=stages.length>0?new Set(stages[stages.length-1].output.map(i=>i.id)):inputIdSet;
   const allIds=new Set(inputIdSet);
@@ -188,15 +209,29 @@ function processData(){
     return{prevCount:prevIds.size,outCount:s.output.length,created,dropped};
   });
 
-  // Per-column sorted arrays and rowOf maps — sort by last-known score (stable across columns)
+  // Per-column sorted arrays and rowOf maps
   const lastScore={};
   for(const it of input)if(it.score!=null)lastScore[it.id]=it.score;
   for(const s of stages)for(const it of s.output)if(it.score!=null)lastScore[it.id]=it.score;
-  function byLastScore(a,b){return(lastScore[b.id]??-Infinity)-(lastScore[a.id]??-Infinity)}
-  const cols=[[...input].sort(byLastScore),...stages.map(s=>[...s.output].sort(byLastScore))];
+  // Group scores: merged item's score becomes the primary sort key for all items in its group.
+  // Singles get group score 0 so they always sort after merged groups.
+  const groupScoreMap={};
+  for(let si=0;si<stages.length;si++)
+    for(const item of stages[si].output)
+      if(item.related_ids?.length){
+        const gs=item.score??0;
+        groupScoreMap[item.id]=gs;
+        for(const rid of item.related_ids)groupScoreMap[rid]=gs;
+      }
+  function byGroupThenLastScore(a,b){
+    const ga=groupScoreMap[a.id]??0,gb=groupScoreMap[b.id]??0;
+    if(Math.abs(ga-gb)>0.001)return gb-ga;
+    return(lastScore[b.id]??-Infinity)-(lastScore[a.id]??-Infinity);
+  }
+  const cols=[[...input].sort(byGroupThenLastScore),...stages.map(s=>[...s.output].sort(byGroupThenLastScore))];
   const colRowOf=cols.map(items=>Object.fromEntries(items.map((item,i)=>[item.id,i])));
 
-  return{input,stages,inputById,stageById,inputIdSet,outcomes,mergedIntoMap,mergeStageMap,stageStats,cols,colRowOf};
+  return{input,stages,inputById,stageById,inputIdSet,outcomes,mergedIntoMap,mergeStageMap,stageStats,cols,colRowOf,groupColorOf};
 }
 
 // ── Input header ──────────────────────────────────────────────────────────────
@@ -257,8 +292,7 @@ function renderPipeline(pd){
   svg.setAttribute('width',totalW);svg.setAttribute('height',totalH);
   svg.style.cssText='position:absolute;top:0;left:0;pointer-events:none;overflow:visible';
   svg.innerHTML=`<defs>
-    <marker id="ma"   markerWidth="7" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="var(--c-pass)"/></marker>
-    <marker id="mm"   markerWidth="7" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="var(--c-merge)"/></marker>
+    <marker id="ma"   markerWidth="7" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="context-stroke"/></marker>
     <marker id="md"   markerWidth="7" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="var(--c-drop)"/></marker>
     <marker id="mahl" markerWidth="7" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#3b82f6"/></marker>
   </defs>`;
@@ -296,9 +330,11 @@ function mkCard(cont,id,item,row,col,outcome){
   const sc=item.score;
   const scoreHtml=sc==null?'':`<span class="card-score ${sc>0.005?'sp':sc<-0.005?'sn':'sz'}">${(sc>=0?'+':'')+sc.toFixed(2)}</span>`;
   const sumDot=item.summary?`<span class="sum-dot" title="Has summary">\u03a3</span>`:'';
-  el.innerHTML=`<div class="card-title">${esc(item.title)}</div>`+
+  el.innerHTML=`<div class="card-title">${esc(stripMd(item.title))}</div>`+
     `<div class="card-foot"><span class="card-src">${esc(item.source_id)}</span>${sumDot}${scoreHtml}</div>`;
   el.onclick=e=>{e.stopPropagation();highlightFlow(id);showItemDetail(id,col)};
+  const _gc=PD.groupColorOf[id];
+  if(_gc)el.style.borderLeftColor=_gc;
   cont.appendChild(el);
 }
 
@@ -316,13 +352,13 @@ function drawArrows(svg,pd){
     const sc=si, dc=si+1;
     const x1=cx(sc)+COL_W, x2=cx(dc);
 
-    // Pass-through arrows
+    // Pass-through arrows (items that will merge later still get arrows until the merge stage)
     for(const id of prevIds){
-      if(!currIds.has(id)||mergedIntoMap[id])continue;
+      if(!currIds.has(id))continue;
       const r1=COL_ROW_OF[sc][id], r2=COL_ROW_OF[dc][id];
       if(r1==null||r2==null)continue;
       extra+=mkArrow(x1,cy(r1)+CARD_H/2,x2,cy(r2)+CARD_H/2,'pass',
-        getLabel(prevById[id],currById[id],stype),id,id,sc);
+        getLabel(prevById[id],currById[id],stype),id,id,sc,pd.groupColorOf[id]||null);
     }
 
     // Drop arrows (gone, not merged at this stage)
@@ -343,7 +379,7 @@ function drawArrows(svg,pd){
       const y2=cy(r2)+CARD_H/2;
       for(const srcId of item.related_ids){
         const r1=COL_ROW_OF[sc][srcId]; if(r1==null)continue;
-        extra+=mkArrow(x1,cy(r1)+CARD_H/2,x2,y2,'merge',null,srcId,item.id,sc);
+        extra+=mkArrow(x1,cy(r1)+CARD_H/2,x2,y2,'merge',null,srcId,item.id,sc,pd.groupColorOf[srcId]||null);
       }
     }
   }
@@ -362,10 +398,10 @@ function drawArrows(svg,pd){
   });
 }
 
-function mkArrow(x1,y1,x2,y2,type,lbl,srcId,dstId,srcCol){
-  const isDrop=type==='drop', isMerge=type==='merge';
-  const color=isDrop?'var(--c-drop)':isMerge?'var(--c-merge)':'var(--c-pass)';
-  const marker=isDrop?'url(#md)':isMerge?'url(#mm)':'url(#ma)';
+function mkArrow(x1,y1,x2,y2,type,lbl,srcId,dstId,srcCol,groupColor){
+  const isDrop=type==='drop';
+  const color=isDrop?'var(--c-drop)':(groupColor||'#94a3b8');
+  const marker=isDrop?'url(#md)':'url(#ma)';
   const dash=isDrop?'stroke-dasharray="5 4"':'';
   const op=isDrop?0.5:1;
   const dx=(x2-x1)*0.45;
@@ -476,7 +512,7 @@ function showItemDetail(id,col){
   const ctx=col===0?'Input state':`After: ${esc(PD.stages[col-1].type)}`;
   let html=`<div class="det-section"><div class="ds-title">${ctx}</div>`+
     dr('Outcome',`<span class="badge ${{passed:'bp',merged:'bm',discarded:'bd'}[outcome]||'bd'}">${outcome}</span>`)+
-    dr('Title',esc(item.title))+
+    dr('Title',esc(stripMd(item.title)))+
     dr('Source',`${esc(item.source_id)} (${esc(item.source_type)})`);
   if(item.category)html+=dr('Category',esc(item.category));
   if(item.score!=null)html+=dr('Score',item.score.toFixed(4));
@@ -485,17 +521,17 @@ function showItemDetail(id,col){
   if(item.url)html+=dr('URL',`<a href="${esc(item.url)}" target="_blank">${esc(item.url)}</a>`);
   html+=`</div>`;
   if(item.summary)
-    html+=`<div class="det-section"><div class="ds-title">Summary</div><div class="dv mono">${esc(item.summary)}</div></div>`;
+    html+=`<div class="det-section"><div class="ds-title">Summary</div><div class="dv mono">${esc(stripMd(item.summary))}</div></div>`;
   if(item.body)
-    html+=`<div class="det-section"><div class="ds-title">Body</div><div class="dv mono">${esc(item.body.slice(0,2000))}${item.body.length>2000?'\n\u2026':''}</div></div>`;
+    html+=`<div class="det-section"><div class="ds-title">Body</div><div class="dv mono">${esc(stripMd(item.body.slice(0,2000)))}${item.body.length>2000?'\n\u2026':''}</div></div>`;
   if(item.related_ids?.length){
     const refs=item.related_ids.map(rid=>{
       const ref=PD.inputById[rid];
-      return`<div class="dr"><div class="dv">${esc(ref?ref.title:rid)}</div></div>`;
+      return`<div class="dr"><div class="dv">${esc(ref?stripMd(ref.title):rid)}</div></div>`;
     }).join('');
     html+=`<div class="det-section"><div class="ds-title">Merged from</div>${refs}</div>`;
   }
-  openDetail(item.title.slice(0,55),html);
+  openDetail(stripMd(item.title),html);
 }
 
 function showStageDetail(si){
