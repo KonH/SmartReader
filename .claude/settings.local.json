@@ -12,7 +12,8 @@
       "Bash(PYTHONPATH=/mnt/d/WSL/WorkSpace/SmartReader/src .venv/bin/python:*)",
       "Bash(PYTHONPATH=src .venv/bin/python:*)",
       "Bash(.venv/bin/python:*)",
-      "Bash(.venv/bin/pip install:*)"
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(systemctl stop:*)"
     ]
   }
 }
