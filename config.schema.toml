@@ -71,6 +71,14 @@ n = 10                # Max items to pass to the next stage
 # model        = "gpt-4o-mini" # OpenAI model ID
 # prompt       = "..."         # optional: override global openai_prompt
 
+# Normalize score — rescales scores per-category to a target range, leveling
+# representation across categories with different item volumes.
+# Place after a scoring stage and before top_n for best effect.
+# [[pipeline]]
+# type           = "normalize_score"
+# normalized_min = 0.0   # target range minimum (default 0.0)
+# normalized_max = 1.0   # target range maximum (default 1.0)
+
 # Threshold — drops items whose score is below the given threshold
 # [[pipeline]]
 # type      = "threshold"

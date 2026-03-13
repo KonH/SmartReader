@@ -103,6 +103,7 @@ def build_pipeline(
     """Build a PipelineAdapter from a list of stage entry dicts."""
     from .stages.keyword_score import KeywordScoreStage
     from .stages.merge_content import MergeContentStage
+    from .stages.normalize_score import NormalizeScoreStage
     from .stages.openai_score import OpenAIScoreStage
     from .stages.openai_summarize import OpenAISummarizeStage
     from .stages.shuffle import ShuffleStage
@@ -180,6 +181,11 @@ def build_pipeline(
             threshold = float(entry.get("threshold", 0.0))
             stages.append(ThresholdStage(threshold))
             stage_configs.append((t, {"threshold": threshold}))
+        elif t == "normalize_score":
+            norm_min = float(entry.get("normalized_min", 0.0))
+            norm_max = float(entry.get("normalized_max", 1.0))
+            stages.append(NormalizeScoreStage(norm_min, norm_max))
+            stage_configs.append((t, {"normalized_min": norm_min, "normalized_max": norm_max}))
         elif t == "merge_content":
             if secrets is None:
                 logger.warning("merge_content stage requires secrets; skipping (no secrets provided)")

@@ -56,6 +56,7 @@ _KNOWN_COMMAND_TYPES: list[type[UICommand]] = [
 
 _DEFAULT_PIPELINE: list[dict] = [
     {"type": "keyword_score", "common_weight": 1.0, "category_weight": 1.5},
+    {"type": "normalize_score"},
     {"type": "top_n", "n": 10},
     {"type": "summarize"},
     {"type": "keyword_score", "common_weight": 1.0, "category_weight": 1.5},
