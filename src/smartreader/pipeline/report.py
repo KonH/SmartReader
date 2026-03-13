@@ -217,29 +217,89 @@ function processData(){
     return{prevCount:prevIds.size,outCount:s.output.length,created,dropped};
   });
 
-  // Per-column sorted arrays and rowOf maps
+  // sort_score per entity: last available score recorded for that ID.
+  // Captured at the point the entity exits (dropped/merged/finally passed), so it
+  // represents the score just before the exit event — stable across all columns.
   const lastScore={};
   for(const it of input)if(it.score!=null)lastScore[it.id]=it.score;
   for(const s of stages)for(const it of s.output)if(it.score!=null)lastScore[it.id]=it.score;
-  // Group scores: merged item's score becomes the primary sort key for all items in its group.
-  // Singles get group score 0 so they always sort after merged groups.
-  const groupScoreMap={};
-  for(let si=0;si<stages.length;si++)
-    for(const item of stages[si].output)
-      if(item.related_ids?.length){
-        const gs=item.score??0;
-        groupScoreMap[item.id]=gs;
-        for(const rid of item.related_ids)groupScoreMap[rid]=gs;
-      }
-  function byGroupThenLastScore(a,b){
-    const ga=groupScoreMap[a.id]??0,gb=groupScoreMap[b.id]??0;
-    if(Math.abs(ga-gb)>0.001)return gb-ga;
-    return(lastScore[b.id]??-Infinity)-(lastScore[a.id]??-Infinity);
-  }
-  const cols=[[...input].sort(byGroupThenLastScore),...stages.map(s=>[...s.output].sort(byGroupThenLastScore))];
-  const colRowOf=cols.map(items=>Object.fromEntries(items.map((item,i)=>[item.id,i])));
 
-  return{input,stages,inputById,stageById,inputIdSet,outcomes,mergedIntoMap,mergeStageMap,stageStats,cols,colRowOf,groupColorOf};
+  // Cluster primary score: merge-source items adopt their merged item's sort_score as
+  // primary key so the whole group sorts together. The merged item and standalone items
+  // use their own score as primary. Within a cluster, secondary = individual sort_score.
+  // Two-key (primary, secondary) tuple sort avoids any magic scaling factor.
+  const clusterPrimary={};
+  for(const [srcId,mId] of Object.entries(mergedIntoMap))
+    clusterPrimary[srcId]=lastScore[mId]??-Infinity;
+
+  // Drop stage: for discarded items, the first stage index where they disappeared.
+  // dropStage[id] = 0 means dropped before stage 0 output; = N means dropped at stage N.
+  const dropStage={};
+  for(const id of allIds){
+    if(outcomes[id]!=='discarded')continue;
+    dropStage[id]=0;
+    for(let si=0;si<stages.length;si++){
+      if(stageById[si][id]!==undefined)dropStage[id]=si+1;
+      else break;
+    }
+  }
+
+  // Global section tier:
+  //   0          — merge clusters (result + sources)
+  //   1          — standalone pass-through items
+  //   2 … 2+N   — dropped items, one tier per drop stage;
+  //               items dropped LATER get a LOWER tier number → appear first among dropped.
+  function sectionTier(id){
+    if(mergeStageMap[id]!==undefined||mergedIntoMap[id])return 0;
+    if(outcomes[id]==='passed')return 1;
+    return 2+(stages.length-(dropStage[id]??0));
+  }
+
+  function globalCmp(a,b){
+    const ta=sectionTier(a), tb=sectionTier(b);
+    if(ta!==tb)return ta-tb;
+    const pa=clusterPrimary[a]??lastScore[a]??-Infinity;
+    const pb=clusterPrimary[b]??lastScore[b]??-Infinity;
+    if(Math.abs(pa-pb)>1e-9)return pb-pa;
+    // Within same cluster: merged result item floats to top (its row is empty before the
+    // merge stage; placing it first avoids a gap appearing in the middle of the cluster).
+    const sa=mergeStageMap[a]!==undefined?Infinity:(lastScore[a]??-Infinity);
+    const sb=mergeStageMap[b]!==undefined?Infinity:(lastScore[b]??-Infinity);
+    return sb-sa;
+  }
+
+  // Build a global row assignment: collect all IDs in first-appearance order,
+  // then sort by (clusterPrimary, lastScore) desc — stable within ties.
+  // Every column uses the same globalRow[id] so items never shift between stages.
+  const allIdsOrdered=[];
+  {const seen=new Set();
+    for(const it of input)if(!seen.has(it.id)){allIdsOrdered.push(it.id);seen.add(it.id);}
+    for(const s of stages)for(const it of s.output)if(!seen.has(it.id)){allIdsOrdered.push(it.id);seen.add(it.id);}
+  }
+  allIdsOrdered.sort(globalCmp);
+  const globalRow=Object.fromEntries(allIdsOrdered.map((id,i)=>[id,i]));
+
+  // Compute pixel Y for each id, inserting SECTION_GAP extra pixels at every tier boundary.
+  const SECTION_GAP=44; // ~half a ROW_STRIDE; visually separates merge / pass / drop tiers
+  let _yExtra=0, _prevTier=-1;
+  const idY={};
+  for(const id of allIdsOrdered){
+    const t=sectionTier(id);
+    if(t!==_prevTier)_yExtra+=SECTION_GAP;
+    idY[id]=HDR_H+globalRow[id]*ROW_STRIDE+_yExtra;
+    _prevTier=t;
+  }
+  const totalPixelH=allIdsOrdered.length>0
+    ?(idY[allIdsOrdered[allIdsOrdered.length-1]]+CARD_H+PAD_B)
+    :(HDR_H+PAD_B);
+
+  // cols: items in each column sorted by their fixed global row (for render iteration)
+  const cols=[[...input].sort((a,b)=>globalRow[a.id]-globalRow[b.id]),
+    ...stages.map(s=>[...s.output].sort((a,b)=>globalRow[a.id]-globalRow[b.id]))];
+  // colRowOf maps id → globalRow[id] — used for existence checks (null = not in this col)
+  const colRowOf=cols.map(items=>Object.fromEntries(items.map(item=>[item.id,globalRow[item.id]])));
+
+  return{input,stages,inputById,stageById,inputIdSet,outcomes,mergedIntoMap,mergeStageMap,stageStats,cols,colRowOf,groupColorOf,idY,totalPixelH};
 }
 
 // ── Input header ──────────────────────────────────────────────────────────────
@@ -280,9 +340,8 @@ function renderPipeline(pd){
   COL_ROW_OF=pd.colRowOf;
   const{input,stages,stageStats,outcomes}=pd;
   const numCols=1+stages.length;
-  const numRows=Math.max(...COL_ITEMS.map(c=>c.length),1);
   const totalW=numCols*COL_W+(numCols-1)*CONN_W;
-  const totalH=HDR_H+numRows*ROW_STRIDE+PAD_B;
+  const totalH=pd.totalPixelH||HDR_H+ROW_STRIDE+PAD_B;
 
   const cont=document.getElementById('pipeline-container');
   cont.style.width=totalW+'px';
@@ -334,7 +393,7 @@ function mkCard(cont,id,item,row,col,outcome){
   const el=document.createElement('div');
   el.className=`item-card ${{passed:'op',merged:'om',discarded:'od'}[outcome]||'od'}`;
   el.dataset.id=id; el.dataset.col=col;
-  el.style.cssText=`left:${cx(col)}px;top:${cy(row)}px;width:${COL_W}px;height:${CARD_H}px;`;
+  el.style.cssText=`left:${cx(col)}px;top:${PD.idY[id]}px;width:${COL_W}px;height:${CARD_H}px;`;
   const sc=item.score;
   const scoreHtml=sc==null?'':`<span class="card-score ${sc>0.005?'sp':sc<-0.005?'sn':'sz'}">${(sc>=0?'+':'')+sc.toFixed(2)}</span>`;
   const sumDot=item.summary?`<span class="sum-dot" title="Has summary">\u03a3</span>`:'';
@@ -363,9 +422,9 @@ function drawArrows(svg,pd){
     // Pass-through arrows (items that will merge later still get arrows until the merge stage)
     for(const id of prevIds){
       if(!currIds.has(id))continue;
-      const r1=COL_ROW_OF[sc][id], r2=COL_ROW_OF[dc][id];
-      if(r1==null||r2==null)continue;
-      extra+=mkArrow(x1,cy(r1)+CARD_H/2,x2,cy(r2)+CARD_H/2,'pass',
+      if(COL_ROW_OF[sc][id]==null||COL_ROW_OF[dc][id]==null)continue;
+      const y=PD.idY[id]+CARD_H/2;
+      extra+=mkArrow(x1,y,x2,y,'pass',
         getLabel(prevById[id],currById[id],stype),id,id,sc,pd.groupColorOf[id]||null);
     }
 
@@ -375,19 +434,19 @@ function drawArrows(svg,pd){
       const mId=mergedIntoMap[id];
       if(mId&&mergeStageMap[mId]===si)continue;
       if(mId)continue;
-      const r1=COL_ROW_OF[sc][id]; if(r1==null)continue;
-      const y=cy(r1)+CARD_H/2, midX=(x1+x2)/2;
+      if(COL_ROW_OF[sc][id]==null)continue;
+      const y=PD.idY[id]+CARD_H/2, midX=(x1+x2)/2;
       extra+=mkArrow(x1,y,midX,y,'drop',null,id,'__drop__',sc);
     }
 
     // Merge arrows: sources converge to merged item
     for(const item of stages[si].output){
       if(!item.related_ids?.length)continue;
-      const r2=COL_ROW_OF[dc][item.id]; if(r2==null)continue;
-      const y2=cy(r2)+CARD_H/2;
+      if(COL_ROW_OF[dc][item.id]==null)continue;
+      const y2=PD.idY[item.id]+CARD_H/2;
       for(const srcId of item.related_ids){
-        const r1=COL_ROW_OF[sc][srcId]; if(r1==null)continue;
-        extra+=mkArrow(x1,cy(r1)+CARD_H/2,x2,y2,'merge',null,srcId,item.id,sc,pd.groupColorOf[srcId]||null);
+        if(COL_ROW_OF[sc][srcId]==null)continue;
+        extra+=mkArrow(x1,PD.idY[srcId]+CARD_H/2,x2,y2,'merge',null,srcId,item.id,sc,pd.groupColorOf[srcId]||null);
       }
     }
   }
