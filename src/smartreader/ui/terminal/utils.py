@@ -84,18 +84,56 @@ def render_state(data: AppStateData, console: Console) -> None:
     else:
         console.print("  [dim]No sources tracked yet.[/dim]")
 
+    # Skip words
+    n_skip = len(data.skip_words)
+    console.print(f"\n[bold]Skip words ({n_skip}):[/bold]")
+    if data.skip_words:
+        console.print("  " + ", ".join(sorted(data.skip_words)))
+    else:
+        console.print("  [dim]None.[/dim]")
+
+    # Ban words
+    n_ban = len(data.ban_words)
+    console.print(f"\n[bold]Ban words ({n_ban}):[/bold]")
+    if data.ban_words:
+        console.print("  " + ", ".join(sorted(data.ban_words)))
+    else:
+        console.print("  [dim]None.[/dim]")
+
     n_common = len(data.common_interests)
     console.print(f"\n[bold]Common interests ({n_common} keywords):[/bold]")
     if data.common_interests:
-        for k, v in data.common_interests.items():
-            console.print(f"  - {k}: {v:.1f}")
+        _render_scored_words(list(data.common_interests.items()), console)
     else:
         console.print("  [dim]No interests yet.[/dim]")
 
     for cat, keywords in data.category_interests.items():
         console.print(f"\n[bold]Category: {cat} ({len(keywords)} keywords)[/bold]")
-        for k, v in keywords.items():
-            console.print(f"  - {k}: {v:.1f}")
+        _render_scored_words(list(keywords.items()), console)
+
+    # OpenAI state
+    console.print(f"\n[bold]OpenAI scoring:[/bold]")
+    console.print(f"  Pending actions: {data.openai_pending_count}")
+    if data.openai_user_summary:
+        console.print(f"  User summary: {data.openai_user_summary}")
+    else:
+        console.print("  [dim]No user summary yet.[/dim]")
+
+
+def _render_scored_words(
+    items: list[tuple[str, float]], console: Console, indent: str = "  "
+) -> None:
+    """Print top 10, a middle-skip line if needed, then bottom 10."""
+    if len(items) <= 20:
+        for k, v in items:
+            console.print(f"{indent}- {k}: {v:.1f}")
+    else:
+        for k, v in items[:10]:
+            console.print(f"{indent}- {k}: {v:.1f}")
+        middle = len(items) - 20
+        console.print(f"{indent}[dim]... (+{middle} words) ...[/dim]")
+        for k, v in items[-10:]:
+            console.print(f"{indent}- {k}: {v:.1f}")
 
 
 def collect_feedback(content: list[Content], console: Console) -> list[tuple[str, bool]]:

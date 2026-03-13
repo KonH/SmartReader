@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ...commands import SkipWordCommand
+from ...commands import BanWordCommand
 from ..common import run_async, async_send_buttons, send_action_menu
 from ..state import TelegramSharedUIState
 
@@ -12,14 +12,14 @@ if TYPE_CHECKING:
 _DONE = "__done__"
 
 
-class TelegramSkipWordCommand(SkipWordCommand):
+class TelegramBanWordCommand(BanWordCommand):
     def __init__(self, app_state: "AppState", shared_ui_state: TelegramSharedUIState) -> None:
         super().__init__(app_state, shared_ui_state)
         self._tg = shared_ui_state
 
     @property
     def control_title(self) -> str:
-        return "skip"
+        return "ban"
 
     def execute(self) -> None:
         sender_id = self._tg.current_sender_id
@@ -30,22 +30,22 @@ class TelegramSkipWordCommand(SkipWordCommand):
             self._tg.add_step_queue.get_nowait()
         run_async(self._tg, async_send_buttons(
             self._tg, sender_id,
-            "Type word(s) to skip (space-separated or one per line), then click Done:",
-            [[("inline", "✅ Done", "skip_done"), ("inline", "Cancel", "skip_cancel")]],
+            "Type word(s) to ban (space-separated or one per line), then click Done:",
+            [[("inline", "✅ Done", "ban_done"), ("inline", "Cancel", "ban_cancel")]],
         ))
-        self._tg.in_skip_mode = True
+        self._tg.in_ban_mode = True
         collected: list[str] = []
         while True:
             val = self._tg.add_step_queue.get()
             if val is None:
-                self._tg.in_skip_mode = False
+                self._tg.in_ban_mode = False
                 send_action_menu(self._tg, sender_id)
                 return
             if val == _DONE:
                 break
             collected.append(val)
-        self._tg.in_skip_mode = False
+        self._tg.in_ban_mode = False
         words_str = " ".join(collected).strip()
         if words_str:
-            self._add_skip_and_restart(words_str)
+            self._add_ban_and_restart(words_str)
         send_action_menu(self._tg, sender_id)

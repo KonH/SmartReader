@@ -16,6 +16,7 @@
 upvote_power = 1.5    # Interest delta applied on upvote
 downvote_power = -1.0 # Interest delta applied on downvote
 skip = []             # Stop-words excluded from all keyword scorers; editable at runtime via 'skip'
+ban = []              # Ban-words: articles containing any of these words (title/body) are dropped by the 'ban' pipeline stage; editable at runtime via 'ban'
 # openai_prompt = "..."              # Global prompt fallback for openai_score stages; editable at runtime via 'prompt > eval'
 # openai_interests_prompt = "..."   # Global interests prompt fallback; editable at runtime via 'prompt > interest'
 # openai_summarize_prompt = "..."   # Global prompt fallback for openai_summarize stages; editable at runtime via 'prompt > summarize'
@@ -83,6 +84,11 @@ n = 10                # Max items to pass to the next stage
 # [[pipeline]]
 # type      = "threshold"
 # threshold = 0.0   # items with score < threshold are discarded
+
+# Ban — drops articles whose title or body contains any word from scoring.ban
+# Place early in the pipeline to discard unwanted content before scoring.
+# [[pipeline]]
+# type = "ban"
 
 # Final top-N for display
 [[pipeline]]

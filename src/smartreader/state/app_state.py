@@ -122,10 +122,24 @@ class AppState:
                         sorted(keywords.items(), key=lambda x: x[1], reverse=True)
                     )
 
+        # Parse OpenAI state
+        openai_summary_raw = raw.get("openai_scoring_summary", {})
+        openai_user_summary = ""
+        if isinstance(openai_summary_raw, dict):
+            openai_user_summary = str(openai_summary_raw.get("text", ""))
+
+        openai_pending_raw = raw.get("openai_scoring_pending_actions", {})
+        openai_pending_count = 0
+        if isinstance(openai_pending_raw, dict):
+            actions = openai_pending_raw.get("actions", [])
+            openai_pending_count = len(actions) if isinstance(actions, list) else 0
+
         callback(True, "", AppStateData(
             source_states=source_states,
             common_interests=common_interests,
             category_interests=category_interests,
+            openai_pending_count=openai_pending_count,
+            openai_user_summary=openai_user_summary,
         ))
 
     def remove_keyword(self, word: str, callback: Callback) -> None:

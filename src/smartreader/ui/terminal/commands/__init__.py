@@ -1,4 +1,5 @@
 from .add_source import TerminalAddSourceCommand
+from .ban_word import TerminalBanWordCommand
 from .explain import TerminalExplainCommand
 from .restart import TerminalRestartCommand
 from .set_cluster_prompt import TerminalSetClusterPromptCommand
@@ -16,6 +17,7 @@ from .skip_word import TerminalSkipWordCommand
 __all__ = [
     "TerminalShowContentCommand",
     "TerminalAddSourceCommand",
+    "TerminalBanWordCommand",
     "TerminalExplainCommand",
     "TerminalShowLogsCommand",
     "TerminalShowStateCommand",

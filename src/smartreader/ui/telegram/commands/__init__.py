@@ -1,4 +1,5 @@
 from .add_source import TelegramAddSourceCommand
+from .ban_word import TelegramBanWordCommand
 from .explain import TelegramExplainCommand
 from .restart import TelegramRestartCommand
 from .set_cluster_prompt import TelegramSetClusterPromptCommand
@@ -16,6 +17,7 @@ from .skip_word import TelegramSkipWordCommand
 __all__ = [
     "TelegramShowContentCommand",
     "TelegramAddSourceCommand",
+    "TelegramBanWordCommand",
     "TelegramExplainCommand",
     "TelegramShowLogsCommand",
     "TelegramShowStateCommand",

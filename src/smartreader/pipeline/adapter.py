@@ -101,6 +101,7 @@ def build_pipeline(
     max_openai_request_repeat_count: int = 3,
 ) -> PipelineAdapter:
     """Build a PipelineAdapter from a list of stage entry dicts."""
+    from .stages.ban import BanStage
     from .stages.keyword_score import KeywordScoreStage
     from .stages.merge_content import MergeContentStage
     from .stages.normalize_score import NormalizeScoreStage
@@ -194,6 +195,9 @@ def build_pipeline(
                 stage_configs.append((t, {
                     k: entry[k] for k in ("model", "prompt", "cluster_prompt") if k in entry
                 }))
+        elif t == "ban":
+            stages.append(BanStage(config))
+            stage_configs.append((t, {}))
         else:
             logger.warning("unknown pipeline stage type %r; skipping", t)
 

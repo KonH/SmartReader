@@ -23,6 +23,7 @@ from .ui import UI
 from .ui.command import UICommand
 from .ui.commands import (
     AddSourceCommand,
+    BanWordCommand,
     ExplainCommand,
     RestartCommand,
     SetCronCommand,
@@ -45,6 +46,7 @@ logger = logging.getLogger(__name__)
 _KNOWN_COMMAND_TYPES: list[type[UICommand]] = [
     ShowContentCommand,
     AddSourceCommand,
+    BanWordCommand,
     ExplainCommand,
     RestartCommand,
     ShowLogsCommand,

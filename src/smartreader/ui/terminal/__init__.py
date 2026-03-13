@@ -15,6 +15,7 @@ from ..command import UICommand
 from ..commands import ShowContentCommand
 from .commands import (
     TerminalAddSourceCommand,
+    TerminalBanWordCommand,
     TerminalExplainCommand,
     TerminalRestartCommand,
     TerminalSetCronCommand,
@@ -39,6 +40,7 @@ _COMMAND_TYPES: list[type[UICommand]] = [
     TerminalShowLogsCommand,
     TerminalShowStateCommand,
     TerminalSkipWordCommand,
+    TerminalBanWordCommand,
     TerminalSetPromptGroupCommand,
     TerminalSetCronCommand,
     TerminalRestartCommand,
@@ -70,6 +72,7 @@ class TerminalUI(UI):
         cmd_by_title = {cmd.control_title.lower(): cmd for cmd in commands}
         show_cmd = cmd_by_title.get("show")
         skip_cmd = cmd_by_title.get("skip")
+        ban_cmd = cmd_by_title.get("ban")
 
         self._running = True
         while self._running:
@@ -104,7 +107,7 @@ class TerminalUI(UI):
             )
             prompt = (
                 f"\n[bold]Press Enter to run[/bold], "
-                f"[dim]'{titles}' or 'skip <word>'[/dim] "
+                f"[dim]'{titles}' or 'skip <w1> <w2>...' or 'ban <w1> <w2>...'[/dim] "
                 f"[dim](Ctrl+C to quit)[/dim]: "
             )
 
@@ -126,11 +129,18 @@ class TerminalUI(UI):
                     show_cmd.execute()
                 continue
 
-            # "skip <word>" shorthand (bypasses the prompt inside SkipWordCommand)
+            # "skip <word> ..." shorthand — space-separated list accepted
             if raw.startswith("skip "):
-                word = raw[5:].strip()
-                if word and skip_cmd is not None:
-                    skip_cmd._add_skip_and_restart(word)  # type: ignore[attr-defined]
+                words = raw[5:].strip()
+                if words and skip_cmd is not None:
+                    skip_cmd._add_skip_and_restart(words)  # type: ignore[attr-defined]
+                continue
+
+            # "ban <word> ..." shorthand — space-separated list accepted
+            if raw.startswith("ban "):
+                words = raw[4:].strip()
+                if words and ban_cmd is not None:
+                    ban_cmd._add_ban_and_restart(words)  # type: ignore[attr-defined]
                 continue
 
             if raw in cmd_by_title:

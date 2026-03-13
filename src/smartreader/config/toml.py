@@ -31,6 +31,7 @@ _DEFAULTS: dict = {
     "scoring": {
         "upvote_power": 1.5,
         "downvote_power": -1.0,
+        "ban": [],
         "skip": [
             "a", "an", "the", "this", "that", "these", "those",
             "i", "me", "my", "we", "our", "you", "your",

@@ -282,19 +282,36 @@ class ShowStateCommand(UICommand, ABC):
             result[0] = data if ok else AppStateData([], {}, {})
 
         self._app_state.read_all_typed(on_data)
-        return result[0]
+        data = result[0]
+
+        if self._app_state.config is not None:
+            scoring_val: list[object] = [{}]
+
+            def on_scoring(ok: bool, err: str, val: object) -> None:
+                scoring_val[0] = val if ok and isinstance(val, dict) else {}
+
+            self._app_state.config.read_value("scoring", on_scoring)
+            scoring: dict = scoring_val[0] if isinstance(scoring_val[0], dict) else {}  # type: ignore[assignment]
+            data.skip_words = list(scoring.get("skip", []))
+            data.ban_words = list(scoring.get("ban", []))
+
+        return data
 
 
 # ── SkipWordCommand ────────────────────────────────────────────────────────────
 
 class SkipWordCommand(UICommand, ABC):
-    """Add word to scoring.skip config, remove from state interests, restart."""
+    """Add words to scoring.skip config, remove from state interests, restart."""
 
     def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
         self._app_state = app_state
         self._shared = shared_ui_state
 
-    def _add_skip_and_restart(self, word: str) -> None:
+    def _add_skip_and_restart(self, words_str: str) -> None:
+        """Accept one or more space-separated words."""
+        words = [w for w in words_str.lower().split() if w]
+        if not words:
+            return
         assert self._app_state.config is not None
         scoring_val: list[object] = [{}]
 
@@ -304,17 +321,17 @@ class SkipWordCommand(UICommand, ABC):
         self._app_state.config.read_value("scoring", on_scoring)
         scoring: dict = scoring_val[0] if isinstance(scoring_val[0], dict) else {}  # type: ignore[assignment]
         skip_list: list = list(scoring.get("skip", []))
-        if word not in skip_list:
-            skip_list.append(word)
+        for word in words:
+            if word not in skip_list:
+                skip_list.append(word)
         scoring["skip"] = skip_list
 
         def on_written(ok: bool, err: str) -> None:
             if not ok:
                 logger.error("skip: write_value error: %s", err)
-            self._app_state.remove_keyword(
-                word,
-                lambda ok2, err2: self._save_and_restart(ok2, err2),
-            )
+            for word in words:
+                self._app_state.remove_keyword(word, lambda ok2, err2: None)
+            self._save_and_restart(True, "")
 
         self._app_state.config.write_value("scoring", scoring, on_written)
 
@@ -325,10 +342,57 @@ class SkipWordCommand(UICommand, ABC):
         self._app_state.config.save(
             lambda ok2, err2: logger.error("skip: config save error: %s", err2) if not ok2 else None
         )
-        logger.info("skip word added, reloading pipeline")
+        logger.info("skip words added, reloading pipeline")
         self._app_state.rebuild_pipeline(
             lambda ok2, err2: logger.error("skip: reload error: %s", err2) if not ok2 else None,
         )
+
+
+# ── BanWordCommand ─────────────────────────────────────────────────────────────
+
+class BanWordCommand(UICommand, ABC):
+    """Add word to scoring.ban config and restart pipeline."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _add_ban_and_restart(self, words_str: str) -> None:
+        """Accept one or more space-separated words."""
+        words = [w for w in words_str.lower().split() if w]
+        if not words:
+            return
+        assert self._app_state.config is not None
+        scoring_val: list[object] = [{}]
+
+        def on_scoring(ok: bool, err: str, val: object) -> None:
+            scoring_val[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("scoring", on_scoring)
+        scoring: dict = scoring_val[0] if isinstance(scoring_val[0], dict) else {}  # type: ignore[assignment]
+        ban_list: list = list(scoring.get("ban", []))
+        skip_list: list = list(scoring.get("skip", []))
+        for word in words:
+            if word not in ban_list:
+                ban_list.append(word)
+            if word in skip_list:
+                skip_list.remove(word)
+        scoring["ban"] = ban_list
+        scoring["skip"] = skip_list
+
+        def on_written(ok: bool, err: str) -> None:
+            if not ok:
+                logger.error("ban: write_value error: %s", err)
+            assert self._app_state.config is not None
+            self._app_state.config.save(
+                lambda ok2, err2: logger.error("ban: config save error: %s", err2) if not ok2 else None
+            )
+            logger.info("ban words added, reloading pipeline")
+            self._app_state.rebuild_pipeline(
+                lambda ok2, err2: logger.error("ban: reload error: %s", err2) if not ok2 else None,
+            )
+
+        self._app_state.config.write_value("scoring", scoring, on_written)
 
 
 # ── SetPromptCommand ───────────────────────────────────────────────────────────

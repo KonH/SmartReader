@@ -40,39 +40,49 @@ class TelegramShowStateCommand(ShowStateCommand):
             lines.append(f"{entry.source_id}: {status}, last read {ts_str}")
         send_block("\n".join(lines))
 
-        # Block 2: Common interests
+        # Block 2: Skip / Ban words
+        skip_str = ", ".join(sorted(data.skip_words)) if data.skip_words else "none"
+        ban_str = ", ".join(sorted(data.ban_words)) if data.ban_words else "none"
+        send_block(
+            f"Skip words ({len(data.skip_words)}): {skip_str}\n"
+            f"Ban words ({len(data.ban_words)}): {ban_str}"
+        )
+
+        # Block 3: Common interests
         n_common = len(data.common_interests)
-        block2_lines = [f"Common interests ({n_common} keywords)"]
-        for k, v in data.common_interests.items():
-            block2_lines.append(f"- {k}: {v:.1f}")
-        block2 = "\n".join(block2_lines)
-        if len(block2) > 4000:
-            truncated: list[str] = [block2_lines[0]]
-            for line in block2_lines[1:]:
-                if len("\n".join(truncated + [line])) + 20 > 4000:
-                    remaining = n_common - (len(truncated) - 1)
-                    truncated.append(f"... +{remaining} more")
-                    break
-                truncated.append(line)
-            block2 = "\n".join(truncated)
-        send_block(block2)
+        send_block(_format_scored_block(f"Common interests ({n_common} keywords)", list(data.common_interests.items())))
 
         # Block per category
         for cat, keywords in data.category_interests.items():
             n_cat = len(keywords)
-            cat_lines = [f"Category: {cat} ({n_cat} keywords)"]
-            for k, v in keywords.items():
-                cat_lines.append(f"- {k}: {v:.1f}")
-            block = "\n".join(cat_lines)
-            if len(block) > 4000:
-                truncated_cat: list[str] = [cat_lines[0]]
-                for line in cat_lines[1:]:
-                    if len("\n".join(truncated_cat + [line])) + 20 > 4000:
-                        remaining_cat = n_cat - (len(truncated_cat) - 1)
-                        truncated_cat.append(f"... +{remaining_cat} more")
-                        break
-                    truncated_cat.append(line)
-                block = "\n".join(truncated_cat)
-            send_block(block)
+            send_block(_format_scored_block(f"Category: {cat} ({n_cat} keywords)", list(keywords.items())))
+
+        # Block: OpenAI state
+        ai_lines = ["OpenAI scoring state"]
+        ai_lines.append(f"Pending actions: {data.openai_pending_count}")
+        if data.openai_user_summary:
+            ai_lines.append(f"User summary: {data.openai_user_summary}")
+        else:
+            ai_lines.append("User summary: (none)")
+        send_block("\n".join(ai_lines))
 
         send_action_menu(self._tg, sender_id)
+
+
+def _format_scored_block(header: str, items: list[tuple[str, float]]) -> str:
+    """Format a scored keyword block with top-10 / middle-skip / bottom-10."""
+    lines = [header]
+    if not items:
+        lines.append("  (none)")
+        return "\n".join(lines)
+    if len(items) <= 20:
+        for k, v in items:
+            lines.append(f"- {k}: {v:.1f}")
+    else:
+        for k, v in items[:10]:
+            lines.append(f"- {k}: {v:.1f}")
+        middle = len(items) - 20
+        lines.append(f"... (+{middle} words) ...")
+        for k, v in items[-10:]:
+            lines.append(f"- {k}: {v:.1f}")
+    return "\n".join(lines)
