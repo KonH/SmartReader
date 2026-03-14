@@ -23,28 +23,14 @@ Personalized content aggregator. Reads RSS feeds and Telegram channels, scores a
 
 ## How It Works
 
-```
-Trigger (manual or cron)
-        │
-        ▼
-  Read sources  ──────────────────────────────────────────────────────────────┐
-  (RSS, Telegram)                                                             │
-        │                                                                     │
-        ▼                                                                     │
-  Pipeline (configurable stages)                                              │
-  ┌──────────────────────────────────────────────────────────────────────┐    │
-  │  ban → keyword_score → normalize → top_n → openai_score → top_n →   │    │
-  │  merge_content → openai_summarize → trim → top_n                     │    │
-  └──────────────────────────────────────────────────────────────────────┘    │
-        │                                                                     │
-        ▼                                                                     │
-  Show to user  ──► Feedback (👍 / 👎 / skip)                                │
-        │                   │                                                 │
-        │                   ▼                                                 │
-        │           Update interests  ────────────────────────────────────────┘
-        │           (keyword + LLM profile)
-        ▼
-  Next run is smarter
+```mermaid
+flowchart TD
+    T([Manual trigger or cron]) --> R["Read sources (RSS, Telegram)"]
+    R --> P["Pipeline (configurable stages)"]
+    P --> S[Show to user]
+    S --> F["Feedback: upvote / downvote / skip"]
+    F --> I[(Interest model)]
+    I -.->|"improves next run"| P
 ```
 
 Content is scored **twice**: a fast keyword pass (L1) trims the bulk before any LLM calls, then a refined LLM pass (L2) on summarized text drives the final ranking. Upvotes and downvotes continuously update the interest model that feeds into L1 scoring.
@@ -53,33 +39,32 @@ Content is scored **twice**: a fast keyword pass (L1) trims the bulk before any 
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Main Coordinator                                │
-│                    (init order: secrets → config →                      │
-│                     state → pipeline → ui → input)                      │
-└───────┬─────────┬──────────┬──────────┬──────────┬──────────┬──────────┘
-        │         │          │          │          │          │
-        ▼         ▼          ▼          ▼          ▼          ▼
-   ┌────────┐ ┌────────┐ ┌──────┐ ┌──────────┐ ┌────┐ ┌──────────┐
-   │Secrets │ │ Config │ │State │ │ Pipeline │ │ UI │ │  Input   │
-   │  (env) │ │ (TOML) │ │(SQL- │ │(adapter +│ │    │ │(sources) │
-   │        │ │        │ │ ite) │ │ stages)  │ │    │ │          │
-   └────────┘ └────────┘ └──────┘ └──────────┘ └────┘ └──────────┘
-                                        │              │
-                                        │         ┌────┴──────┐
-                                        │         │    RSS    │
-                                        │         │ Telegram  │
-                                        │         └───────────┘
-                                   ┌────┴──────┐
-                                   │  Scoring  │  keyword (pymorphy3 + simplemma)
-                                   │ Summarize │  OpenAI API
-                                   └───────────┘
+```mermaid
+flowchart TD
+    C[Main Coordinator] --> Sec[Secrets]
+    C --> Cfg[Config]
+    C --> St[State]
+    C --> Pip[Pipeline]
+    C --> UI[UI]
+    C --> Inp[Input]
 
-UI options:   Terminal (stdout/stdin)  |  Telegram Bot
+    UI --> TUI[Terminal]
+    UI --> TBot[Telegram Bot]
+
+    Inp --> RSS[RSS / Atom]
+    Inp --> TG[Telegram Channels]
+
+    Pip --> Scoring["keyword_score · openai_score · normalize · top_n · ban · threshold · shuffle"]
+    Pip --> Summarize["openai_summarize · merge_content · trim"]
+
+    St --- |SQLite| St
+    Cfg --- |TOML| Cfg
+    Sec --- |env vars| Sec
 ```
 
 All major components are abstract interfaces with swappable implementations. New sources or storage backends follow the same pattern.
+
+Initialization order: `secrets → config → state → pipeline → ui → input`
 
 ---
 
@@ -174,25 +159,22 @@ The pipeline is a configurable, ordered list of `[[pipeline]]` blocks. Each stag
 | `trim` | Truncates summaries to a maximum line or character count | `lines`, `chars` |
 | `merge_content` | Clusters related articles and merges each cluster into one item | `model`, `prompt`, `cluster_prompt` |
 
-### Example pipeline (L1 → LLM → summarize → L2)
+### Example pipeline (L1 → LLM → summarize → display)
 
-```
-Fetch (N articles, e.g. 300)
-  │
-  ├─ ban              → drop banned keywords
-  ├─ keyword_score    → fast interest matching
-  ├─ normalize_score  → equalize per-category
-  ├─ top_n (150)      → trim before LLM
-  │
-  ├─ openai_score     → LLM relevance rating
-  ├─ threshold (0)    → drop negatively rated
-  ├─ normalize_score  → re-equalize
-  ├─ top_n (30)       → limit before summarize
-  │
-  ├─ merge_content    → cluster duplicates
-  ├─ openai_summarize → summarize each item
-  ├─ trim             → cap summary length
-  └─ top_n (10)       → final set for display
+```mermaid
+flowchart TD
+    F["Fetch (e.g. 300 articles)"] --> B[ban]
+    B --> KS[keyword_score]
+    KS --> N1[normalize_score]
+    N1 --> T1["top_n (150)"]
+    T1 --> OS[openai_score]
+    OS --> TH["threshold (0)"]
+    TH --> N2[normalize_score]
+    N2 --> T2["top_n (30)"]
+    T2 --> MC[merge_content]
+    MC --> SUM[openai_summarize]
+    SUM --> TR[trim]
+    TR --> T3["top_n (10) — shown to user"]
 ```
 
 Prompts for LLM stages can be set globally in `[scoring]` or overridden per stage. All prompts are editable at runtime via the `prompt` command in the UI.
@@ -205,21 +187,7 @@ Prompts for LLM stages can be set globally in `[scoring]` or overridden per stag
 
 Interactive command-line interface using [Rich](https://github.com/Textualize/rich) for formatted output. No extra configuration needed.
 
-```
-┌───────────────────────────────────────────┐
-│  Commands                                 │
-│  show        — run the pipeline now       │
-│  add         — add a new source           │
-│  skip        — manage stop-words          │
-│  ban         — manage ban-words           │
-│  cron        — set/clear schedule         │
-│  prompt      — edit LLM prompts           │
-│  explain     — show interest model        │
-│  logs        — show pipeline timing       │
-│  state       — inspect state keys         │
-│  restart     — restart the service        │
-└───────────────────────────────────────────┘
-```
+Available commands: `show`, `add`, `skip`, `ban`, `cron`, `prompt`, `explain`, `logs`, `state`, `restart`
 
 ### Telegram Bot
 
@@ -271,28 +239,16 @@ On first run Telethon will prompt for your phone number and OTP; the session is 
 
 ## Scoring and Interests
 
-SmartReader maintains an interest model that grows from your feedback:
+SmartReader maintains an interest model in SQLite that grows from your feedback:
 
-```
-Upvote / Downvote
-       │
-       ▼
-┌──────────────────────────────────────┐
-│  Interest model (SQLite)             │
-│                                      │
-│  common_keyword_interests            │  ← global keywords weighted by feedback
-│    { "climate": 4.5,                 │
-│      "startup": 2.0, … }             │
-│                                      │
-│  category_interests                  │  ← same, broken out per category
-│    { "technology": { "ai": 3.0 } }   │
-│                                      │
-│  openai_scoring_summary              │  ← LLM preference profile (if openai_score used)
-│    "User is interested in …"         │
-└──────────────────────────────────────┘
-       │
-       ▼
-keyword_score stage (next run)
+```mermaid
+flowchart LR
+    FB["Upvote / Downvote"] --> KW["common_keyword_interests\n{ climate: 4.5, startup: 2.0 }"]
+    FB --> CK["category_interests\n{ technology: { ai: 3.0 } }"]
+    FB --> LP["openai_scoring_summary\n(LLM preference profile)"]
+    KW --> KS[keyword_score stage]
+    CK --> KS
+    LP --> OS[openai_score stage]
 ```
 
 **Tokenization:** `pymorphy3` for Cyrillic text (Russian morphology), `simplemma` for Latin scripts (English and Serbo-Croatian).
