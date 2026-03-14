@@ -1,0 +1,227 @@
+# SmartReader — example configuration
+# This file demonstrates a complete setup with RSS + Telegram sources,
+# a multi-stage pipeline, and the Telegram Bot UI.
+#
+# Reference schema: config.schema.toml (project root)
+# State schema:     docs/data.md
+# Pipeline stages:  README.md → Pipeline Stages
+
+# ── Common ────────────────────────────────────────────────────────────────────
+
+[common]
+# Days to scan back from the current time on the very first run of a new source.
+initial_days_scan_interval = 7
+
+# Optional cron expression for scheduled automatic runs (requires `croniter`).
+# Use https://crontab.guru/ to compose the expression.
+# Editable at runtime via the 'cron' command.
+cron_schedule = "0 8 * * 1-5"   # weekdays at 08:00
+
+# How many pipeline timing records to keep (used for duration estimates in the UI).
+pipeline_stats_max_entries = 100
+
+# Circuit-breaker: if the same OpenAI request fires more than this many times in
+# one pipeline run the process exits and alerts the UI to avoid runaway costs.
+max_openai_request_repeat_count = 3
+
+# ── Interest / feedback weights ───────────────────────────────────────────────
+
+[scoring]
+upvote_power   =  1.5   # Keyword interest delta on upvote
+downvote_power = -1.0   # Keyword interest delta on downvote
+
+# Stop-words are excluded from all keyword scorers.
+# Add noise words that appear in every article and dilute scoring.
+# Editable at runtime via the 'skip' command.
+skip = ["read", "more", "click", "subscribe", "newsletter", "watch"]
+
+# Ban-words: any article whose title or body matches one of these words
+# is dropped by the 'ban' pipeline stage.
+# Editable at runtime via the 'ban' command.
+ban = ["sponsored", "advertisement", "promo"]
+
+# ── Global LLM prompts (optional overrides) ───────────────────────────────────
+# Each prompt can also be overridden per pipeline stage.
+# Editable at runtime via 'prompt' commands in the UI.
+
+openai_prompt = """
+You are a news relevance scorer.
+
+Given an article, output a single number between -1.0 and 1.0:
+  +1.0 = very important or highly relevant to the user's interests
+   0.0 = neutral / borderline
+  -1.0 = irrelevant, low-quality, off-topic
+
+Reply with ONLY the number, no explanation.
+"""
+
+openai_interests_prompt = """
+You maintain a short preference profile for a content reader.
+
+Current profile:
+{current_profile}
+
+Recent feedback actions:
+{actions_text}
+
+Write an updated profile in up to 10 short sentences describing what this user
+likes and dislikes. Be concise and specific. Reply with ONLY the profile text.
+"""
+
+openai_summarize_prompt = """
+Summarize the following article in 3–5 sentences.
+Focus on facts: who, what, where, when, why.
+Omit filler phrases. Reply with ONLY the summary.
+"""
+
+openai_merge_prompt = """
+You are given several related news articles covering the same event.
+Write a single concise headline (one sentence) that captures the key development.
+Reply with ONLY the headline.
+"""
+
+openai_cluster_prompt = """
+Group the following article IDs into clusters where each cluster covers
+the same real-world event. Return a JSON array of arrays of IDs.
+Example: [["id1","id2"],["id3"]]
+Reply with ONLY the JSON.
+"""
+
+# ── Pipeline ──────────────────────────────────────────────────────────────────
+# Stages run in order; each receives the output list of the previous stage.
+# See README.md for a full stage reference.
+#
+# This example pipeline:
+#   1. Drop banned content early
+#   2. Fast keyword score on all fetched articles
+#   3. Normalize scores across categories (fair representation)
+#   4. Keep the top 150 for LLM evaluation
+#   5. LLM relevance score
+#   6. Drop irrelevant items (score < 0)
+#   7. Normalize again after LLM scoring
+#   8. Keep the top 30
+#   9. Cluster and merge near-duplicate articles
+#  10. Summarize merged items
+#  11. Final top 10 for display
+
+[[pipeline]]
+type = "ban"                  # Drop articles matching scoring.ban words
+
+[[pipeline]]
+type = "keyword_score"
+common_weight   = 1.0         # Weight for global keyword interests
+category_weight = 1.5         # Weight for per-category interests (boosts niche relevance)
+
+[[pipeline]]
+type           = "normalize_score"
+normalized_min = 0.0
+normalized_max = 1.0
+
+[[pipeline]]
+type = "top_n"
+n    = 150                    # Limit items before the expensive LLM call
+
+[[pipeline]]
+type         = "openai_score"
+model        = "gpt-4o-mini"
+score_factor = 150.0          # Score range: [-150, +150]
+
+[[pipeline]]
+type      = "threshold"
+threshold = 0.0               # Drop anything the LLM rated negative
+
+[[pipeline]]
+type           = "normalize_score"
+normalized_min = 0.0
+normalized_max = 1.0
+
+[[pipeline]]
+type = "top_n"
+n    = 30
+
+[[pipeline]]
+type  = "merge_content"       # Cluster and merge near-duplicate articles
+model = "gpt-4o-mini"
+
+[[pipeline]]
+type  = "openai_summarize"    # Summarize each (possibly merged) item
+model = "gpt-4o-mini"
+
+[[pipeline]]
+type  = "trim"
+lines = 8                     # Truncate summaries to 8 lines for display
+chars = 600                   # …and 600 characters
+
+[[pipeline]]
+type = "top_n"
+n    = 10                     # Final set shown to the user
+
+# ── Telegram Bot UI (optional) ────────────────────────────────────────────────
+# Delivers articles and collects feedback through a Telegram bot.
+# Disable to use the terminal UI instead (the default).
+#
+# Required secrets (environment variables):
+#   TELEGRAM_BOT_TOKEN  — from @BotFather
+#   TELEGRAM_API_ID     — from https://my.telegram.org/apps
+#   TELEGRAM_API_HASH   — from https://my.telegram.org/apps
+#
+# WARNING: an empty controller_usernames list allows ANY Telegram user to
+# trigger pipeline runs and read your content. Always set this.
+
+[telegram_ui]
+active                = true
+controller_usernames  = ["yourusername"]  # Telegram usernames without @
+upvote_reaction       = "👍"
+downvote_reaction     = "👎"
+
+# ── Telegram channel input (optional) ─────────────────────────────────────────
+# Enables reading from Telegram channels as content sources.
+#
+# Required secrets (environment variables):
+#   TELEGRAM_API_ID    — from https://my.telegram.org/apps
+#   TELEGRAM_API_HASH  — from https://my.telegram.org/apps
+#   TELEGRAM_SESSION   — optional StringSession; see .env.example for generation
+
+[telegram]
+active                   = true
+read_source_min_interval = 1000   # ms — minimum pause between channel reads
+read_source_max_interval = 3000   # ms — maximum pause (random in [min, max])
+
+# ── Sources ───────────────────────────────────────────────────────────────────
+# Add one [[sources.<name>]] block per feed.
+# <name> is a label used internally; it can be anything unique.
+# category drives per-category interest scoring and normalization.
+
+# — RSS feeds —
+
+[[sources.tech_rss]]
+type       = "rss"
+externalId = "https://example.com/technology/rss"
+category   = "technology"
+
+[[sources.world_rss]]
+type       = "rss"
+externalId = "https://example.com/world/rss"
+category   = "world"
+
+[[sources.science_rss]]
+type       = "rss"
+externalId = "https://example.com/science/rss"
+category   = "science"
+
+[[sources.business_rss]]
+type       = "rss"
+externalId = "https://example.com/business/rss"
+category   = "business"
+
+# — Telegram channels (requires [telegram] active = true) —
+
+[[sources.tech_channel]]
+type       = "telegram"
+externalId = "@example_tech_channel"
+category   = "technology"
+
+[[sources.news_channel]]
+type       = "telegram"
+externalId = "@example_news_channel"
+category   = "world"
