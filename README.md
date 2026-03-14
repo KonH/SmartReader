@@ -57,9 +57,9 @@ flowchart TD
     Pip --> Scoring["keyword_score · openai_score · normalize · top_n · ban · threshold · shuffle"]
     Pip --> Summarize["openai_summarize · merge_content · trim"]
 
-    St --- |SQLite| St
-    Cfg --- |TOML| Cfg
-    Sec --- |env vars| Sec
+    St --> StImpl[SQLite]
+    Cfg --> CfgImpl[TOML]
+    Sec --> SecImpl[env vars]
 ```
 
 All major components are abstract interfaces with swappable implementations. New sources or storage backends follow the same pattern.
@@ -243,9 +243,9 @@ SmartReader maintains an interest model in SQLite that grows from your feedback:
 
 ```mermaid
 flowchart LR
-    FB["Upvote / Downvote"] --> KW["common_keyword_interests\n{ climate: 4.5, startup: 2.0 }"]
-    FB --> CK["category_interests\n{ technology: { ai: 3.0 } }"]
-    FB --> LP["openai_scoring_summary\n(LLM preference profile)"]
+    FB["Upvote / Downvote"] --> KW["common_keyword_interests<br/>{ climate: 4.5, startup: 2.0 }"]
+    FB --> CK["category_interests<br/>{ technology: { ai: 3.0 } }"]
+    FB --> LP["openai_scoring_summary<br/>(LLM preference profile)"]
     KW --> KS[keyword_score stage]
     CK --> KS
     LP --> OS[openai_score stage]
