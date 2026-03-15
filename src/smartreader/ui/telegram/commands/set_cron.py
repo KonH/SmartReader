@@ -54,9 +54,9 @@ class TelegramSetCronCommand(SetCronCommand):
             [[("inline", "Cancel", "cron_cancel")]],
             parse_mode="html",
         ))
-        self._tg.in_set_cron_mode = True
+        self._tg.mode_state = "cron"
         expr_raw = self._tg.add_step_queue.get()
-        self._tg.in_set_cron_mode = False
+        self._tg.mode_state = ""
 
         if expr_raw is None:
             send_action_menu(self._tg, sender_id)

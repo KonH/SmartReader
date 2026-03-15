@@ -22,6 +22,7 @@ from .commands import (
     TelegramRestartCommand,
     TelegramSetCronCommand,
     TelegramSetPromptGroupCommand,
+    TelegramShowConfigCommand,
     TelegramShowContentCommand,
     TelegramShowLogsCommand,
     TelegramShowStateCommand,
@@ -50,6 +51,7 @@ _COMMAND_TYPES: list[type[UICommand]] = [
     TelegramExplainCommand,
     TelegramShowLogsCommand,
     TelegramShowStateCommand,
+    TelegramShowConfigCommand,
     TelegramSkipWordCommand,
     TelegramBanWordCommand,
     TelegramSetPromptGroupCommand,
@@ -67,6 +69,7 @@ _MODE_TO_TITLE = {
     "ban": "ban",
     "prompt": "prompt",
     "cron": "cron",
+    "config": "config",
     "explain": "explain",
     "restart": "restart",
 }
@@ -114,8 +117,7 @@ class TelegramUI(UI):
                 categories = cats_result[0]
                 app_state.categories = categories
 
-            logger.info("telegram_ui: waiting for trigger (state: in_add=%s in_skip=%s in_ban=%s in_prompt=%s in_group=%s in_cron=%s waiting_cat=%s)",
-                        s.in_add_mode, s.in_skip_mode, s.in_ban_mode, s.in_set_prompt_mode, s.in_group_mode, s.in_set_cron_mode, s.waiting_for_category)
+            logger.info("telegram_ui: waiting (mode=%s waiting_cat=%s)", s.mode_state, s.waiting_for_category)
             item = s.trigger_queue.get()
             sender_id: int = item["sender_id"]
             s.current_sender_id = sender_id

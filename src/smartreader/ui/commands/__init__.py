@@ -764,6 +764,131 @@ class SetPromptGroupCommand(UICommandGroup, ABC):
     def subcommands(self) -> list[UICommand]: ...
 
 
+# ── ShowConfigCommand ──────────────────────────────────────────────────────────
+
+class ShowConfigCommand(UICommand, ABC):
+    """General-purpose hierarchical config editor."""
+
+    SECTION_FIELDS: dict[str, list[tuple[str, str]]] = {
+        "common": [
+            ("initial_days_scan_interval", "int"),
+            ("cron_schedule", "str"),
+            ("pipeline_stats_max_entries", "int"),
+            ("max_openai_request_repeat_count", "int"),
+        ],
+        "scoring": [
+            ("upvote_power", "float"),
+            ("downvote_power", "float"),
+            ("openai_prompt", "str"),
+            ("openai_interests_prompt", "str"),
+            ("openai_summarize_prompt", "str"),
+            ("openai_merge_prompt", "str"),
+            ("openai_cluster_prompt", "str"),
+        ],
+        "telegram_ui": [
+            ("active", "bool"),
+            ("upvote_reaction", "str"),
+            ("downvote_reaction", "str"),
+        ],
+        "telegram": [
+            ("active", "bool"),
+            ("read_source_min_interval", "int"),
+            ("read_source_max_interval", "int"),
+        ],
+    }
+
+    STAGE_PARAMS: dict[str, list[tuple[str, object]]] = {
+        "keyword_score": [("common_weight", 1.0), ("category_weight", 1.5)],
+        "openai_score": [("score_factor", 1.0), ("model", "gpt-4o-mini"), ("prompt", ""), ("interests_prompt", "")],
+        "shuffle": [("noise_factor", 1.0)],
+        "summarize": [],
+        "openai_summarize": [("model", "gpt-4o-mini"), ("prompt", "")],
+        "trim": [("lines", 0), ("chars", 0)],
+        "top_n": [("n", 5)],
+        "threshold": [("threshold", 0.0)],
+        "normalize_score": [("normalized_min", 0.0), ("normalized_max", 1.0)],
+        "ban": [],
+        "merge_content": [("model", "gpt-4o-mini"), ("prompt", ""), ("cluster_prompt", "")],
+    }
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _read_section(self, section: str) -> dict:
+        assert self._app_state.config is not None
+        result: list[object] = [{}]
+
+        def on_val(ok: bool, err: str, val: object) -> None:
+            result[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value(section, on_val)
+        return result[0] if isinstance(result[0], dict) else {}  # type: ignore[return-value]
+
+    def _write_section_and_restart(self, section: str, data: dict, is_cron_change: bool = False) -> None:
+        assert self._app_state.config is not None
+        self._app_state.config.write_value(
+            section, data,
+            lambda ok, err: logger.error("show_config: write_value error: %s", err) if not ok else None,
+        )
+        self._app_state.config.save(
+            lambda ok, err: logger.error("show_config: config save error: %s", err) if not ok else None,
+        )
+        if is_cron_change:
+            self._app_state.update_cron(data.get("cron_schedule", ""))
+        logger.info("show_config: section %r saved, reloading pipeline", section)
+        self._app_state.rebuild_pipeline(
+            lambda ok, err: logger.error("show_config: reload error: %s", err) if not ok else None,
+        )
+
+    def _read_pipeline(self) -> list[dict]:
+        assert self._app_state.config is not None
+        result: list[object] = [{}]
+
+        def on_val(ok: bool, err: str, val: object) -> None:
+            result[0] = val if ok else {}
+
+        self._app_state.config.read_value("pipeline", on_val)
+        val = result[0]
+        if isinstance(val, dict):
+            return val.get("pipeline", [])  # type: ignore[return-value]
+        return []
+
+    def _write_pipeline_and_restart(self, stages: list[dict]) -> None:
+        assert self._app_state.config is not None
+        self._app_state.config.write_value(
+            "pipeline", stages,
+            lambda ok, err: logger.error("show_config: pipeline write error: %s", err) if not ok else None,
+        )
+        self._app_state.config.save(
+            lambda ok, err: logger.error("show_config: pipeline save error: %s", err) if not ok else None,
+        )
+        logger.info("show_config: pipeline saved, reloading")
+        self._app_state.rebuild_pipeline(
+            lambda ok, err: logger.error("show_config: reload error: %s", err) if not ok else None,
+        )
+
+    @staticmethod
+    def _coerce(value_str: str, type_hint: str) -> object:
+        if type_hint == "int":
+            return int(value_str)
+        if type_hint == "float":
+            return float(value_str)
+        if type_hint == "bool":
+            return value_str.strip().lower() in ("true", "1", "yes", "on")
+        return value_str  # str
+
+    @staticmethod
+    def _infer_type(value: object) -> str:
+        if isinstance(value, bool):
+            return "bool"
+        if isinstance(value, int):
+            return "int"
+        if isinstance(value, float):
+            return "float"
+        return "str"
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _fmt_seconds(seconds: float) -> str:

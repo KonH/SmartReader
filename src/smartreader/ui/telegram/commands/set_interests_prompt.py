@@ -36,9 +36,9 @@ class TelegramSetInterestsPromptCommand(SetInterestsPromptCommand):
             "Send the new interests prompt\n({current_profile} and {actions_text} are the placeholders):",
             [[("inline", "Cancel", "interests_cancel")]],
         ))
-        self._tg.in_set_prompt_mode = True
+        self._tg.mode_state = "prompt"
         prompt_raw = self._tg.add_step_queue.get()
-        self._tg.in_set_prompt_mode = False
+        self._tg.mode_state = ""
         if prompt_raw is None:
             send_action_menu(self._tg, sender_id)
             return

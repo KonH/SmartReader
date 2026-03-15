@@ -31,11 +31,11 @@ class TelegramAddSourceCommand(AddSourceCommand):
         sender_id = self._tg.current_sender_id
         if not self._tg.active or sender_id is None:
             return
-        self._tg.in_add_mode = True
+        self._tg.mode_state = "add"
         try:
             result = self._run_add_conversation(sender_id)
         finally:
-            self._tg.in_add_mode = False
+            self._tg.mode_state = ""
 
         if result is None:
             send_action_menu(self._tg, sender_id)

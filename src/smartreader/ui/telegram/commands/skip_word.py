@@ -33,18 +33,18 @@ class TelegramSkipWordCommand(SkipWordCommand):
             "Type word(s) to skip (space-separated or one per line), then click Done:",
             [[("inline", "✅ Done", "skip_done"), ("inline", "Cancel", "skip_cancel")]],
         ))
-        self._tg.in_skip_mode = True
+        self._tg.mode_state = "skip"
         collected: list[str] = []
         while True:
             val = self._tg.add_step_queue.get()
             if val is None:
-                self._tg.in_skip_mode = False
+                self._tg.mode_state = ""
                 send_action_menu(self._tg, sender_id)
                 return
             if val == _DONE:
                 break
             collected.append(val)
-        self._tg.in_skip_mode = False
+        self._tg.mode_state = ""
         words_str = " ".join(collected).strip()
         if words_str:
             self._add_skip_and_restart(words_str)

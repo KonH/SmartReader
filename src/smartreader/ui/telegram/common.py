@@ -95,6 +95,7 @@ def send_action_menu(s: TelegramSharedUIState, sender_id: int) -> None:
             [("inline", "\U0001f6ab  BAN WORD", "menu:ban")],
             [("inline", "\U0001f4dd  PROMPT", "menu:prompt")],
             [("inline", "\U0001f5d3  SCHEDULE", "menu:cron")],
+            [("inline", "\u2699  CONFIG", "menu:config")],
             [("inline", "\U0001f4ca  EXPLAIN", "menu:explain")],
             [("inline", "\U0001f504  RESTART", "menu:restart")],
         ],
@@ -113,16 +114,16 @@ def register_handlers(s: TelegramSharedUIState) -> None:
     from telethon import events  # type: ignore[import-untyped]
     client = s.client  # type: ignore[union-attr]
 
-    @client.on(events.NewMessage(incoming=True, pattern=r"(?i)^/?(run|start|add|logs|state|skip|ban|prompt|cron|explain|restart)"))
+    @client.on(events.NewMessage(incoming=True, pattern=r"(?i)^/?(run|start|add|logs|state|skip|ban|prompt|cron|explain|config|restart)"))
     async def on_trigger(event: object) -> None:  # type: ignore[type-arg]
         sender = await event.get_sender()  # type: ignore[attr-defined]
         if not _is_controller(s, sender):
             logger.info("telegram_ui: ignoring command from non-controller %s", username(sender))
             return
-        if s.in_add_mode or s.in_skip_mode or s.in_ban_mode or s.in_set_prompt_mode or s.in_group_mode or s.in_set_cron_mode:
+        if s.mode_state != "":
             return
         cmd = event.raw_text.strip().lstrip("/").lower().split()[0]  # type: ignore[attr-defined]
-        mode = {"run": "ask", "start": "ask", "add": "add", "logs": "logs", "state": "state", "skip": "skip", "ban": "ban", "prompt": "prompt", "cron": "cron", "explain": "explain", "restart": "restart"}.get(cmd, "ask")
+        mode = {"run": "ask", "start": "ask", "add": "add", "logs": "logs", "state": "state", "skip": "skip", "ban": "ban", "prompt": "prompt", "cron": "cron", "explain": "explain", "config": "config", "restart": "restart"}.get(cmd, "ask")
         logger.info("telegram_ui: /%s from %s (mode=%s)", cmd, username(sender), mode)
         save_last_chat(event.sender_id)  # type: ignore[attr-defined]
         if mode != "ask" and s.waiting_for_category:
@@ -131,7 +132,7 @@ def register_handlers(s: TelegramSharedUIState) -> None:
 
     @client.on(events.NewMessage(incoming=True))
     async def on_add_message(event: object) -> None:  # type: ignore[type-arg]
-        if not s.in_add_mode and not s.in_skip_mode and not s.in_ban_mode and not s.in_set_prompt_mode and not s.in_group_mode and not s.in_set_cron_mode:
+        if s.mode_state == "":
             return
         sender = await event.get_sender()  # type: ignore[attr-defined]
         if not _is_controller(s, sender):
@@ -167,9 +168,36 @@ def register_handlers(s: TelegramSharedUIState) -> None:
         elif data.startswith("group_select:"):
             s.add_step_queue.put(data[13:])
             await event.answer()  # type: ignore[attr-defined]
+        elif data.startswith("cfg_sect:"):
+            s.add_step_queue.put(f"sect:{data[9:]}")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data.startswith("cfg_key:"):
+            s.add_step_queue.put(f"key:{data[8:]}")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data == "cfg_back":
+            s.add_step_queue.put("__back__")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data == "cfg_cancel":
+            s.add_step_queue.put(None)
+            await event.answer()  # type: ignore[attr-defined]
+        elif data == "cfg_done":
+            s.add_step_queue.put("__done__")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data.startswith("pl_stage:"):
+            s.add_step_queue.put(f"stage:{data[9:]}")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data.startswith("pl_action:"):
+            s.add_step_queue.put(f"action:{data[10:]}")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data.startswith("pl_type:"):
+            s.add_step_queue.put(f"type:{data[8:]}")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data.startswith("pl_param:"):
+            s.add_step_queue.put(f"param:{data[9:]}")
+            await event.answer()  # type: ignore[attr-defined]
         elif data.startswith("menu:"):
             cmd = data[5:]
-            mode = {"show": "ask", "add": "add", "logs": "logs", "state": "state", "skip": "skip", "ban": "ban", "prompt": "prompt", "cron": "cron", "explain": "explain", "restart": "restart"}.get(cmd, "ask")
+            mode = {"show": "ask", "add": "add", "logs": "logs", "state": "state", "skip": "skip", "ban": "ban", "prompt": "prompt", "cron": "cron", "config": "config", "explain": "explain", "restart": "restart"}.get(cmd, "ask")
             sender_id = event.sender_id  # type: ignore[attr-defined]
             save_last_chat(sender_id)
             if mode != "ask" and s.waiting_for_category:

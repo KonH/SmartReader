@@ -50,9 +50,9 @@ class TelegramSetPromptGroupCommand(SetPromptGroupCommand):
                 [("inline", "Cancel", "group_cancel")],
             ],
         ))
-        self._tg.in_group_mode = True
+        self._tg.mode_state = "group"
         choice = self._tg.add_step_queue.get()
-        self._tg.in_group_mode = False
+        self._tg.mode_state = ""
 
         if choice is None:
             send_action_menu(self._tg, sender_id)

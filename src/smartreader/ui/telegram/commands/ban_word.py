@@ -33,18 +33,18 @@ class TelegramBanWordCommand(BanWordCommand):
             "Type word(s) to ban (space-separated or one per line), then click Done:",
             [[("inline", "✅ Done", "ban_done"), ("inline", "Cancel", "ban_cancel")]],
         ))
-        self._tg.in_ban_mode = True
+        self._tg.mode_state = "ban"
         collected: list[str] = []
         while True:
             val = self._tg.add_step_queue.get()
             if val is None:
-                self._tg.in_ban_mode = False
+                self._tg.mode_state = ""
                 send_action_menu(self._tg, sender_id)
                 return
             if val == _DONE:
                 break
             collected.append(val)
-        self._tg.in_ban_mode = False
+        self._tg.mode_state = ""
         words_str = " ".join(collected).strip()
         if words_str:
             self._add_ban_and_restart(words_str)

@@ -4,13 +4,15 @@ from __future__ import annotations
 import asyncio
 import queue
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from ..command import SharedUIState
 
 if TYPE_CHECKING:
     from ..._types import LiveFeedbackHandler
     from ...types.content import Content
+
+UIMode = Literal["", "add", "skip", "ban", "prompt", "group", "cron", "config"]
 
 
 class TelegramSharedUIState(SharedUIState):
@@ -29,12 +31,7 @@ class TelegramSharedUIState(SharedUIState):
 
         self.current_sender_id: int | None = None
         self.active: bool = False
-        self.in_add_mode: bool = False
-        self.in_skip_mode: bool = False
-        self.in_ban_mode: bool = False
-        self.in_set_prompt_mode: bool = False
-        self.in_group_mode: bool = False
-        self.in_set_cron_mode: bool = False
+        self.mode_state: UIMode = ""
         self.waiting_for_category: bool = False
         self.controller_usernames: list[str] = []
         self.upvote_text: str = "👍"
