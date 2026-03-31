@@ -30,7 +30,7 @@ class TelegramSkipWordCommand(SkipWordCommand):
             self._tg.add_step_queue.get_nowait()
         run_async(self._tg, async_send_buttons(
             self._tg, sender_id,
-            "Type word(s) to skip (space-separated or one per line), then click Done:",
+            "Type word(s) to skip (separated by spaces, commas, semicolons, or one per line), then click Done:",
             [[("inline", "✅ Done", "skip_done"), ("inline", "Cancel", "skip_cancel")]],
         ))
         self._tg.mode_state = "skip"

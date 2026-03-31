@@ -308,8 +308,9 @@ class SkipWordCommand(UICommand, ABC):
         self._shared = shared_ui_state
 
     def _add_skip_and_restart(self, words_str: str) -> None:
-        """Accept one or more space-separated words."""
-        words = [w for w in words_str.lower().split() if w]
+        """Accept one or more words separated by spaces, commas, or semicolons."""
+        import re
+        words = [w for w in re.split(r"[\s,;]+", words_str.lower()) if w]
         if not words:
             return
         assert self._app_state.config is not None
@@ -358,8 +359,9 @@ class BanWordCommand(UICommand, ABC):
         self._shared = shared_ui_state
 
     def _add_ban_and_restart(self, words_str: str) -> None:
-        """Accept one or more space-separated words."""
-        words = [w for w in words_str.lower().split() if w]
+        """Accept one or more words separated by spaces, commas, or semicolons."""
+        import re
+        words = [w for w in re.split(r"[\s,;]+", words_str.lower()) if w]
         if not words:
             return
         assert self._app_state.config is not None

@@ -30,7 +30,7 @@ class TelegramBanWordCommand(BanWordCommand):
             self._tg.add_step_queue.get_nowait()
         run_async(self._tg, async_send_buttons(
             self._tg, sender_id,
-            "Type word(s) to ban (space-separated or one per line), then click Done:",
+            "Type word(s) to ban (separated by spaces, commas, semicolons, or one per line), then click Done:",
             [[("inline", "✅ Done", "ban_done"), ("inline", "Cancel", "ban_cancel")]],
         ))
         self._tg.mode_state = "ban"
