@@ -26,10 +26,10 @@ class TerminalSetCronCommand(SetCronCommand):
             console.print(f"[dim]Current schedule:[/dim] [bold]{current}[/bold] (enabled, {self._next_run_label(current)})")
         else:
             console.print("[dim]Schedule: disabled[/dim]")
-        console.print(f"[dim](server local time: {self._now_label()})[/dim]")
+        console.print(f"[dim](UTC now: {self._now_label()})[/dim]")
         console.print()
         console.print(
-            f"[dim]Timezone:[/dim]    {self._local_tz_label()}\n"
+            "[dim]Timezone:[/dim]    UTC\n"
             "[dim]Cron format:[/dim]  minute  hour  day-of-month  month  day-of-week\n"
             "[dim]Examples:[/dim]\n"
             "  [cyan]0 8 * * *[/cyan]      daily at 08:00\n"

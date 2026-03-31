@@ -34,7 +34,7 @@ class CronScheduler:
             return
 
         import datetime
-        cron = croniter(self._expr, datetime.datetime.now().astimezone())
+        cron = croniter(self._expr, datetime.datetime.now(datetime.timezone.utc))
         logger.info("cron: scheduler started with expression %r", self._expr)
 
         while not self._stop.is_set():
@@ -42,7 +42,7 @@ class CronScheduler:
             delay = next_ts - time.time()
             logger.info(
                 "cron: next trigger at %s (in %.0f s)",
-                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(next_ts)),
+                time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(next_ts)),
                 max(delay, 0),
             )
             if self._stop.wait(max(delay, 0.0)):

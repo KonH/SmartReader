@@ -29,18 +29,18 @@ class TelegramSetCronCommand(SetCronCommand):
         if current:
             status = (
                 f"Current schedule: <code>{html.escape(current)}</code> (enabled, {self._next_run_label(current)})\n"
-                f"<i>(server local time: {self._now_label()})</i>"
+                f"<i>(UTC now: {self._now_label()})</i>"
             )
         else:
             status = (
                 "Schedule: <i>disabled</i>\n"
-                f"<i>(server local time: {self._now_label()})</i>"
+                f"<i>(UTC now: {self._now_label()})</i>"
             )
 
         help_text = (
             f"{status}\n\n"
             "<b>Set automatic show schedule</b>\n"
-            f"Times are in <b>{html.escape(self._local_tz_label())}</b> (server local time)\n"
+            "Times are in <b>UTC</b>\n"
             "Uses cron syntax: <code>minute hour day-of-month month day-of-week</code>\n\n"
             "Examples:\n"
             "• <code>0 8 * * *</code>     — daily at 08:00\n"

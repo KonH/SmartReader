@@ -655,16 +655,10 @@ class SetCronCommand(UICommand, ABC):
         return str(common.get("cron_schedule", ""))  # type: ignore[union-attr]
 
     @staticmethod
-    def _local_tz_label() -> str:
-        """Return e.g. 'CET (UTC+0100)' for the system timezone."""
-        import time
-        return time.strftime("%Z (UTC%z)")
-
-    @staticmethod
     def _now_label() -> str:
-        """Return current local time as 'YYYY-MM-DD HH:MM'."""
+        """Return current UTC time as 'YYYY-MM-DD HH:MM UTC'."""
         import time
-        return time.strftime("%Y-%m-%d %H:%M")
+        return time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
 
     @staticmethod
     def _next_run_label(expr: str) -> str:
@@ -672,8 +666,8 @@ class SetCronCommand(UICommand, ABC):
         import datetime
         import time
         from croniter import croniter  # type: ignore[import-untyped]
-        now_aware = datetime.datetime.now().astimezone()
-        delta = int(croniter(expr, now_aware).get_next(float) - time.time())
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        delta = int(croniter(expr, now_utc).get_next(float) - time.time())
         h, rem = divmod(max(delta, 0), 3600)
         m = rem // 60
         if h:
