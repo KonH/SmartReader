@@ -86,6 +86,11 @@ def main() -> None:
     enable_pipeline_logging: bool = bool(common_cfg.get("pipeline_logging", True))
     max_openai_request_repeat_count: int = int(common_cfg.get("max_openai_request_repeat_count", 3))
 
+    def _prompt_map(raw: object) -> dict[str, str]:
+        if not isinstance(raw, dict):
+            return {}
+        return {str(k): str(v) for k, v in raw.items() if str(v).strip()}
+
     if raw_cfg.get("telegram_ui", {}).get("active"):
         logger.info("using TelegramUI")
         shared: object = TelegramSharedUIState()
@@ -113,6 +118,8 @@ def main() -> None:
         global_merge_prompt=scoring_cfg.get("openai_merge_prompt", ""),
         global_cluster_prompt=scoring_cfg.get("openai_cluster_prompt", ""),
         global_summarize_prompt=scoring_cfg.get("openai_summarize_prompt", ""),
+        category_prompts=_prompt_map(scoring_cfg.get("category_prompts")),
+        channel_prompts=_prompt_map(scoring_cfg.get("channel_prompts")),
         enable_logging=enable_pipeline_logging,
         on_circuit_trip=_on_circuit_trip,
         max_openai_request_repeat_count=max_openai_request_repeat_count,
@@ -165,6 +172,8 @@ def main() -> None:
             global_merge_prompt=scoring.get("openai_merge_prompt", ""),
             global_cluster_prompt=scoring.get("openai_cluster_prompt", ""),
             global_summarize_prompt=scoring.get("openai_summarize_prompt", ""),
+            category_prompts=_prompt_map(scoring.get("category_prompts")),
+            channel_prompts=_prompt_map(scoring.get("channel_prompts")),
             enable_logging=bool(new_raw.get("common", {}).get("pipeline_logging", True)),
             on_circuit_trip=_on_circuit_trip,
             max_openai_request_repeat_count=int(new_raw.get("common", {}).get("max_openai_request_repeat_count", 3)),

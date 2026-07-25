@@ -165,6 +165,18 @@ def register_handlers(s: TelegramSharedUIState) -> None:
         elif data in ("add_cancel", "skip_cancel", "ban_cancel", "prompt_cancel", "interests_cancel", "group_cancel", "cron_cancel"):
             s.add_step_queue.put(None)
             await event.answer()  # type: ignore[attr-defined]
+        elif data.startswith("prompt_scope:"):
+            s.add_step_queue.put(f"scope:{data[13:]}")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data.startswith("prompt_pick:"):
+            s.add_step_queue.put(f"pick:{data[12:]}")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data == "prompt_new":
+            s.add_step_queue.put("__new__")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data == "prompt_clear":
+            s.add_step_queue.put("__clear__")
+            await event.answer()  # type: ignore[attr-defined]
         elif data.startswith("group_select:"):
             s.add_step_queue.put(data[13:])
             await event.answer()  # type: ignore[attr-defined]
