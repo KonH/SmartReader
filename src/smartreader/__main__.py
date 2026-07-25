@@ -183,51 +183,95 @@ def main() -> None:
     app_state.pipeline_factory = _pipeline_factory
 
     # ── Hot-reload: cron scheduler updater ────────────────────────────────────
-    # Build the trigger callback once based on UI type; reuse it on every reload.
-    _active_scheduler: list[CronScheduler | None] = [None]
+    # One CronScheduler per schedule (global ALL + optional per-category).
+    _active_schedulers: list[CronScheduler] = []
 
-    if isinstance(shared, TelegramSharedUIState):
-        _tg = shared
+    def _make_cron_callback(category: str | None) -> Callable[[], None]:
+        label = category if category is not None else "ALL"
+        if isinstance(shared, TelegramSharedUIState):
+            _tg = shared
+
+            def _cron_cb() -> None:
+                from .ui.telegram.common import load_last_chat
+                last = load_last_chat()
+                logger.info("cron[%s]: fired, last_chat=%s", label, last)
+                if last is None:
+                    logger.warning(
+                        "cron[%s]: no saved chat id — trigger skipped "
+                        "(send any message to the bot first)",
+                        label,
+                    )
+                    return
+                logger.info(
+                    "cron[%s]: queuing trigger for chat_id=%s mode=run category=%r",
+                    label, last, category,
+                )
+                _tg.trigger_queue.put({
+                    "sender_id": last,
+                    "mode": "run",
+                    "category": category,
+                })
+                logger.info("cron[%s]: trigger queued (~%d items)", label, _tg.trigger_queue.qsize())
+
+            return _cron_cb
+
+        if isinstance(shared, TerminalSharedUIState):
+            _term = shared
+
+            def _cron_cb() -> None:
+                logger.info("cron[%s]: fired, queuing terminal trigger category=%r", label, category)
+                _term.trigger_queue.put(category)
+                logger.info("cron[%s]: terminal trigger queued", label)
+
+            return _cron_cb
 
         def _cron_cb() -> None:
-            from .ui.telegram.common import load_last_chat
-            last = load_last_chat()
-            logger.info("cron: fired, last_chat=%s", last)
-            if last is None:
-                logger.warning("cron: no saved chat id — trigger skipped (send any message to the bot first)")
-                return
-            logger.info("cron: queuing trigger for chat_id=%s mode=run", last)
-            _tg.trigger_queue.put({"sender_id": last, "mode": "run"})
-            logger.info("cron: trigger queued (~%d items)", _tg.trigger_queue.qsize())
+            logger.warning("cron[%s]: unrecognized UI state type, trigger ignored", label)
 
-    elif isinstance(shared, TerminalSharedUIState):
-        _term = shared
+        return _cron_cb
 
-        def _cron_cb() -> None:  # type: ignore[no-redef]
-            logger.info("cron: fired, queuing terminal trigger")
-            _term.trigger_queue.put(True)
-            logger.info("cron: terminal trigger queued")
+    def _collect_cron_schedules(common: dict) -> list[tuple[str | None, str]]:
+        """Return (category_or_None, expr) pairs from the common config section."""
+        schedules: list[tuple[str | None, str]] = []
+        global_expr = str(common.get("cron_schedule", "") or "").strip()
+        if global_expr:
+            schedules.append((None, global_expr))
+        cat_sched = common.get("category_schedules", {})
+        if isinstance(cat_sched, dict):
+            for cat, expr in cat_sched.items():
+                expr_s = str(expr or "").strip()
+                if cat and expr_s:
+                    schedules.append((str(cat), expr_s))
+        return schedules
 
-    else:
-        def _cron_cb() -> None:  # type: ignore[no-redef]
-            logger.warning("cron: unrecognized UI state type, trigger ignored")
-
-    def _cron_updater(expr: str) -> None:
-        """Stop the current scheduler (if any) and start a new one for *expr*.
-
-        Pass an empty string to stop the scheduler without starting a new one.
-        """
-        old = _active_scheduler[0]
-        if old is not None:
+    def _cron_updater() -> None:
+        """Stop all running schedulers and restart from current config."""
+        for old in _active_schedulers:
             old.stop()
-            _active_scheduler[0] = None
-        if expr:
-            sched = CronScheduler(expr, _cron_cb)
-            sched.start()
-            _active_scheduler[0] = sched
-            logger.info("cron scheduler reloaded with expression %r", expr)
+        _active_schedulers.clear()
+
+        common: dict = {}
+        if app_state.config is not None:
+            def on_common(ok: bool, err: str, val: object) -> None:
+                nonlocal common
+                if ok and isinstance(val, dict):
+                    common = val
+
+            app_state.config.read_value("common", on_common)
         else:
-            logger.info("cron scheduler stopped")
+            common = dict(raw_cfg.get("common", {}))
+
+        schedules = _collect_cron_schedules(common)
+        if not schedules:
+            logger.info("cron: all schedulers stopped (no schedules configured)")
+            return
+
+        for category, expr in schedules:
+            label = category if category is not None else "ALL"
+            sched = CronScheduler(expr, _make_cron_callback(category), label=label)
+            sched.start()
+            _active_schedulers.append(sched)
+            logger.info("cron: started scheduler label=%s expr=%r", label, expr)
 
     app_state.cron_updater = _cron_updater
 
@@ -236,9 +280,7 @@ def main() -> None:
             logger.error("init failed: %s", err)
             sys.exit(1)
         logger.info("init: cron update starting")
-        cron_expr: str = raw_cfg.get("common", {}).get("cron_schedule", "")
-        if cron_expr:
-            app_state.update_cron(cron_expr)
+        app_state.update_cron()
         logger.info("init: cron updated")
         logger.info("init: coordinator run starting")
         coordinator.run(commands)

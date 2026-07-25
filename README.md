@@ -104,7 +104,7 @@ Full annotated example: [`docs/config.example.toml`](docs/config.example.toml).
 
 | Section | Purpose |
 |---------|---------|
-| `[common]` | Scan interval, cron schedule, circuit-breaker limits |
+| `[common]` | Scan interval, global/per-category cron schedules, circuit-breaker limits |
 | `[scoring]` | Feedback weights, stop-words, ban-words, global LLM prompts |
 | `[[pipeline]]` | Ordered processing stages (see [Pipeline Stages](#pipeline-stages)) |
 | `[telegram_ui]` | Telegram Bot UI (optional, off by default) |

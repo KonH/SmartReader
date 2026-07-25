@@ -151,9 +151,14 @@ class TelegramUI(UI):
                 cmd.execute()
                 logger.info("telegram_ui: %s.execute() returned", type(cmd).__name__)
             else:
+                # Automated / cron trigger — optional category from schedule
+                cat = item.get("category")
                 if app_state is not None:
-                    app_state.trigger_category = None
-                logger.info("telegram_ui: executing %s (no category selection)", type(cmd).__name__)
+                    app_state.trigger_category = cat
+                logger.info(
+                    "telegram_ui: executing %s (scheduled category=%r)",
+                    type(cmd).__name__, cat,
+                )
                 cmd.execute()
                 logger.info("telegram_ui: %s.execute() returned", type(cmd).__name__)
 

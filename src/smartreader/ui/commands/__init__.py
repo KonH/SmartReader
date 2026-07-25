@@ -630,7 +630,7 @@ class SetMergePromptCommand(UICommand, ABC):
 # ── SetCronCommand ─────────────────────────────────────────────────────────────
 
 class SetCronCommand(UICommand, ABC):
-    """Write common.cron_schedule to config and restart."""
+    """Write common.cron_schedule / common.category_schedules and reload schedulers."""
 
     _CRON_HELP = (
         "Cron format: minute hour day-of-month month day-of-week\n"
@@ -645,7 +645,7 @@ class SetCronCommand(UICommand, ABC):
         self._app_state = app_state
         self._shared = shared_ui_state
 
-    def _read_current_cron(self) -> str:
+    def _read_common(self) -> dict:
         assert self._app_state.config is not None
         result: list[object] = [{}]
 
@@ -653,8 +653,47 @@ class SetCronCommand(UICommand, ABC):
             result[0] = val if ok and isinstance(val, dict) else {}
 
         self._app_state.config.read_value("common", on_common)
-        common = result[0] if isinstance(result[0], dict) else {}
-        return str(common.get("cron_schedule", ""))  # type: ignore[union-attr]
+        return result[0] if isinstance(result[0], dict) else {}  # type: ignore[return-value]
+
+    def _read_current_cron(self, category: str | None = None) -> str:
+        """Return cron expr for ALL (category=None) or a specific category."""
+        common = self._read_common()
+        if category is None:
+            return str(common.get("cron_schedule", "") or "")
+        cat_sched = common.get("category_schedules", {})
+        if isinstance(cat_sched, dict):
+            return str(cat_sched.get(category, "") or "")
+        return ""
+
+    def _read_category_schedules(self) -> dict[str, str]:
+        """Return enabled per-category schedules {category: expr}."""
+        cat_sched = self._read_common().get("category_schedules", {})
+        if not isinstance(cat_sched, dict):
+            return {}
+        out: dict[str, str] = {}
+        for cat, expr in cat_sched.items():
+            expr_s = str(expr or "").strip()
+            if cat and expr_s:
+                out[str(cat)] = expr_s
+        return out
+
+    def _schedule_target_categories(self) -> list[str]:
+        """Categories available for scheduling (sources + already-scheduled)."""
+        cats = set(self._app_state.categories)
+        cats.update(self._read_category_schedules().keys())
+        return sorted(cats)
+
+    def _format_schedule_status_lines(self) -> list[str]:
+        """Human-readable status lines for all configured schedules."""
+        lines: list[str] = []
+        global_expr = self._read_current_cron(None)
+        if global_expr:
+            lines.append(f"ALL: {global_expr} ({self._next_run_label(global_expr)})")
+        else:
+            lines.append("ALL: disabled")
+        for cat, expr in self._read_category_schedules().items():
+            lines.append(f"{cat}: {expr} ({self._next_run_label(expr)})")
+        return lines
 
     @staticmethod
     def _now_label() -> str:
@@ -685,21 +724,29 @@ class SetCronCommand(UICommand, ABC):
             raise
         return bool(croniter.is_valid(expr))
 
-    def _set_cron_and_restart(self, expr: str) -> None:
-        """Write common.cron_schedule (empty string = disabled) and hot-reload the scheduler."""
+    def _set_cron_and_restart(self, expr: str, category: str | None = None) -> None:
+        """Write schedule for ALL or a category (empty expr = disable) and reload."""
         assert self._app_state.config is not None
-        common_val: list[object] = [{}]
+        common = dict(self._read_common())
 
-        def on_common(ok: bool, err: str, val: object) -> None:
-            common_val[0] = val if ok and isinstance(val, dict) else {}
-
-        self._app_state.config.read_value("common", on_common)
-        common: dict = common_val[0] if isinstance(common_val[0], dict) else {}  # type: ignore[assignment]
-
-        if expr:
-            common["cron_schedule"] = expr
+        if category is None:
+            if expr:
+                common["cron_schedule"] = expr
+            else:
+                common.pop("cron_schedule", None)
         else:
-            common.pop("cron_schedule", None)
+            cat_sched_raw = common.get("category_schedules", {})
+            cat_sched: dict = dict(cat_sched_raw) if isinstance(cat_sched_raw, dict) else {}
+            if expr:
+                cat_sched[category] = expr
+            else:
+                cat_sched.pop(category, None)
+            if cat_sched:
+                common["category_schedules"] = cat_sched
+            else:
+                common.pop("category_schedules", None)
+
+        target = category if category is not None else "ALL"
 
         def on_written(ok: bool, err: str) -> None:
             if not ok:
@@ -708,8 +755,11 @@ class SetCronCommand(UICommand, ABC):
             self._app_state.config.save(
                 lambda ok2, err2: logger.error("set_cron: config save error: %s", err2) if not ok2 else None
             )
-            logger.info("cron_schedule updated to %r, reloading scheduler", expr or "(disabled)")
-            self._app_state.update_cron(expr)
+            logger.info(
+                "cron schedule for %s updated to %r, reloading schedulers",
+                target, expr or "(disabled)",
+            )
+            self._app_state.update_cron()
 
         self._app_state.config.write_value("common", common, on_written)
 
@@ -831,7 +881,7 @@ class ShowConfigCommand(UICommand, ABC):
             lambda ok, err: logger.error("show_config: config save error: %s", err) if not ok else None,
         )
         if is_cron_change:
-            self._app_state.update_cron(data.get("cron_schedule", ""))
+            self._app_state.update_cron()
         logger.info("show_config: section %r saved, reloading pipeline", section)
         self._app_state.rebuild_pipeline(
             lambda ok, err: logger.error("show_config: reload error: %s", err) if not ok else None,
