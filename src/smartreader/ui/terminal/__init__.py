@@ -78,11 +78,17 @@ class TerminalUI(UI):
         while self._running:
             # Fire any pending scheduled trigger before asking for input
             if not self._shared.trigger_queue.empty():
-                self._shared.trigger_queue.get_nowait()
-                logger.info("terminal_ui: scheduled trigger received, running show")
-                self._shared.console.print("\n[bold cyan]Scheduled show starting…[/bold cyan]")
+                scheduled_category = self._shared.trigger_queue.get_nowait()
+                logger.info(
+                    "terminal_ui: scheduled trigger received, running show (category=%r)",
+                    scheduled_category,
+                )
+                label = scheduled_category if scheduled_category is not None else "ALL"
+                self._shared.console.print(
+                    f"\n[bold cyan]Scheduled show starting ({label})…[/bold cyan]"
+                )
                 if app_state is not None:
-                    app_state.trigger_category = None
+                    app_state.trigger_category = scheduled_category
                 if show_cmd is not None:
                     show_cmd.execute()
                     logger.info("terminal_ui: scheduled show complete")

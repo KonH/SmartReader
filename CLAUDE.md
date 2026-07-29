@@ -70,7 +70,9 @@ Ask / Cron ──► Read sources ──► Score (L1) ──► Select top_n_l1
 ```toml
 [common]
 initial_days_scan_interval = 7  # days to scan back on first run per source
-cron_schedule = ""              # optional cron expression for scheduled auto-show (requires croniter)
+cron_schedule = ""              # optional cron expression for scheduled auto-show of ALL categories (requires croniter)
+# [common.category_schedules]   # optional per-category schedules (same cron syntax); editable via 'cron' command
+# tech = "0 9 * * 1-5"
 
 [telegram_ui]
 active = false                  # set true to enable Telegram Bot UI
@@ -174,7 +176,7 @@ Secrets:   initialize(params, cb) | readValue(key, cb<string>)
 - **Telegram trigger modes**: `mode: "ask"` (human-initiated) shows category keyboard and blocks on `category_queue`; `mode: "run"` (automated/cron) skips category selection. Always use `"run"` for programmatic triggers.
 - **Telegram empty-message error**: Telegram API rejects zero-width space (`\u200b`) as an empty message. When a button-only message is needed, always use `async_send_buttons` with real text — never a whitespace placeholder.
 - **Telegram stuck state**: if `async_send` fails before a value is placed on `add_step_queue`, `mode_state` stays set and the loop blocks on `add_step_queue.get()` indefinitely; only a process restart recovers.
-- **`CronScheduler`** (`scheduler.py`): daemon thread; pass `datetime.datetime.now().astimezone()` (not `time.time()`) as croniter start — plain epoch causes UTC vs local-time mismatch. Started in `on_init` after all modules are ready. `[common] cron_schedule` config key holds the expression.
+- **`CronScheduler`** (`scheduler.py`): daemon thread; pass `datetime.datetime.now(datetime.timezone.utc)` as croniter start. One scheduler instance per schedule label (ALL + each category). Started in `on_init` after all modules are ready via `AppState.update_cron()` which reloads from config. `[common] cron_schedule` is the global (ALL categories) expression; optional `[common.category_schedules]` maps category name → cron expression for category-filtered scheduled shows. The `cron` command edits either target and hot-reloads all schedulers.
 - **State file path**: `SQLiteState` accepts `path: Path`. `__main__.py` reads `sys.argv[1]` as the state path (default `state.sqlite`). `run.sh` forwards `$@` to Python; `retry_run.sh` forwards `$@` to `run.sh`.
 - **Telegram content messages use HTML mode**: `show_content_list` builds messages with `parse_mode="html"`. Title and body go through `_md_to_html` (HTML-escapes `&<>`, then converts `[text](url)` → `<a href>`, `**bold**` → `<b>`, `` `code` `` → `<code>`). Menu/prompt messages keep `parse_mode="md"`. Telethon parses Markdown client-side before sending, so `_escape_md` backslash sequences appear literally — HTML mode is the correct choice for arbitrary article text.
 - **Pipeline steps with callbacks must be iterative, not recursive**: All coordinator steps that loop over items calling synchronous callbacks (`_score_l1`, `_score_l2`, `_summarize_all`) use a plain `for` loop — callbacks fire synchronously and mutate items in place or append to a local list. Recursive designs hit Python's call stack limit. Never introduce a recursive pipeline step. Exception: chaining over a small, fixed-size list (e.g. 2–3 scorer implementations) is safe and acceptable.

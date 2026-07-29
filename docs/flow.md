@@ -11,7 +11,7 @@ The flow can be initiated in two ways:
 | Mode | Description |
 |------|-------------|
 | **Ask (pull)** | The user manually requests a content update |
-| **Cron (push)** | A scheduled job automatically triggers the pipeline |
+| **Cron (push)** | A scheduled job automatically triggers the pipeline. Global `cron_schedule` runs across all categories; optional `[common.category_schedules]` entries run filtered to one category each. |
 
 ---
 

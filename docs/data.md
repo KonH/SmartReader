@@ -8,6 +8,26 @@ This document describes the data structures used by SmartReader for configuratio
 
 Stored as a **TOML** file. Contains source definitions and scoring parameters.
 
+### `[common]`
+
+| Field | Description |
+|-------|-------------|
+| `initial_days_scan_interval` | Days to scan back on first run per source |
+| `cron_schedule` | Optional cron expression for scheduled auto-show across **all** categories (UTC). Absent/empty = disabled. |
+| `category_schedules` | Optional map of `category → cron expression`. Each entry schedules a show filtered to that category only. Editable via the `cron` command alongside the global schedule. |
+| `pipeline_stats_max_entries` | Max pipeline timing records kept in state |
+| `max_openai_request_repeat_count` | Circuit-breaker limit for repeated OpenAI requests |
+
+**Example:**
+```toml
+[common]
+cron_schedule = "0 8 * * 1-5"
+
+[common.category_schedules]
+tech = "0 9 * * 1-5"
+world = "30 18 * * *"
+```
+
 ### `[scoring]`
 
 Controls interest update powers, ban/skip word lists, and LLM prompts.

@@ -12,12 +12,19 @@ logger = logging.getLogger(__name__)
 class CronScheduler:
     """Daemon thread that fires *callback* each time the cron expression matches."""
 
-    def __init__(self, expr: str, callback: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        expr: str,
+        callback: Callable[[], None],
+        *,
+        label: str = "ALL",
+    ) -> None:
         self._expr = expr
         self._callback = callback
+        self._label = label
         self._stop = threading.Event()
         self._thread = threading.Thread(
-            target=self._run, daemon=True, name="cron-scheduler"
+            target=self._run, daemon=True, name=f"cron-scheduler-{label}"
         )
 
     def start(self) -> None:
@@ -35,21 +42,25 @@ class CronScheduler:
 
         import datetime
         cron = croniter(self._expr, datetime.datetime.now(datetime.timezone.utc))
-        logger.info("cron: scheduler started with expression %r", self._expr)
+        logger.info(
+            "cron[%s]: scheduler started with expression %r",
+            self._label, self._expr,
+        )
 
         while not self._stop.is_set():
             next_ts: float = cron.get_next(float)
             delay = next_ts - time.time()
             logger.info(
-                "cron: next trigger at %s (in %.0f s)",
+                "cron[%s]: next trigger at %s (in %.0f s)",
+                self._label,
                 time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(next_ts)),
                 max(delay, 0),
             )
             if self._stop.wait(max(delay, 0.0)):
                 break
             if not self._stop.is_set():
-                logger.info("cron: triggering scheduled show")
+                logger.info("cron[%s]: triggering scheduled show", self._label)
                 try:
                     self._callback()
                 except Exception as exc:
-                    logger.error("cron: callback error: %s", exc)
+                    logger.error("cron[%s]: callback error: %s", self._label, exc)

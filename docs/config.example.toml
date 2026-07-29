@@ -12,10 +12,15 @@
 # Days to scan back from the current time on the very first run of a new source.
 initial_days_scan_interval = 7
 
-# Optional cron expression for scheduled automatic runs (requires `croniter`).
-# Use https://crontab.guru/ to compose the expression.
+# Optional cron expression for scheduled automatic runs across ALL categories
+# (requires `croniter`). Use https://crontab.guru/ to compose the expression.
 # Editable at runtime via the 'cron' command.
 cron_schedule = "0 8 * * 1-5"   # weekdays at 08:00
+
+# Optional per-category schedules. Each fires a show filtered to that category.
+# [common.category_schedules]
+# tech  = "0 9 * * 1-5"   # weekdays at 09:00 — technology only
+# world = "30 18 * * *"   # daily at 18:30 — world news only
 
 # How many pipeline timing records to keep (used for duration estimates in the UI).
 pipeline_stats_max_entries = 100

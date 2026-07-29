@@ -56,12 +56,12 @@ class AppState:
             return
         self.pipeline_factory(callback)
 
-    def update_cron(self, expr: str) -> None:
-        """Replace the running cron scheduler with a new expression (empty = stop)."""
+    def update_cron(self) -> None:
+        """Reload global and per-category cron schedules from config."""
         if self.cron_updater is None:
             logger.warning("update_cron: no updater configured")
             return
-        self.cron_updater(expr)
+        self.cron_updater()
 
     def read_all_typed(self, callback: AppStateCallback) -> None:
         self._state.read_all(
