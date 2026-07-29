@@ -96,6 +96,8 @@ def build_pipeline(
     global_merge_prompt: str = "",
     global_cluster_prompt: str = "",
     global_summarize_prompt: str = "",
+    category_prompts: dict[str, str] | None = None,
+    channel_prompts: dict[str, str] | None = None,
     enable_logging: bool = False,
     on_circuit_trip: Callable[[str], None] | None = None,
     max_openai_request_repeat_count: int = 3,
@@ -115,6 +117,8 @@ def build_pipeline(
 
     shared_common: dict[str, float] = {}
     shared_category: dict[str, dict[str, float]] = {}
+    cat_prompts = dict(category_prompts or {})
+    ch_prompts = dict(channel_prompts or {})
 
     stages: list[PipelineStage] = []
     stage_configs: list[tuple[str, dict]] = []
@@ -136,11 +140,14 @@ def build_pipeline(
             if secrets is None:
                 logger.warning("openai_score stage requires secrets; skipping (no secrets provided)")
             else:
+                # Keep stage `prompt` separate from global so score-time resolution can
+                # apply channel/category overrides: stage > channel > category > global.
                 effective_entry = dict(entry)
-                if "prompt" not in effective_entry and global_prompt:
-                    effective_entry["prompt"] = global_prompt
                 if "interests_prompt" not in effective_entry and global_interests_prompt:
                     effective_entry["interests_prompt"] = global_interests_prompt
+                effective_entry["global_prompt"] = global_prompt
+                effective_entry["category_prompts"] = cat_prompts
+                effective_entry["channel_prompts"] = ch_prompts
                 stages.append(OpenAIScoreStage(state, secrets, effective_entry, max_openai_request_repeat_count, on_circuit_trip))
                 stage_configs.append((t, {
                     k: effective_entry[k]

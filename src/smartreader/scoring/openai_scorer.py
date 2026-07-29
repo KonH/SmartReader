@@ -33,6 +33,39 @@ _SUMMARY_KEY = "openai_scoring_summary"
 _PENDING_KEY = "openai_scoring_pending_actions"
 
 
+def resolve_eval_prompt(
+    *,
+    stage_prompt: str = "",
+    channel_prompts: dict[str, str] | None = None,
+    category_prompts: dict[str, str] | None = None,
+    global_prompt: str = "",
+    source_id: str = "",
+    category: str | None = None,
+    default: str = _DEFAULT_PROMPT,
+) -> str:
+    """Resolve EVAL scoring prompt: stage > channel > category > global > default."""
+    if stage_prompt:
+        return stage_prompt
+    ch_map = channel_prompts or {}
+    if source_id and source_id in ch_map and ch_map[source_id]:
+        return ch_map[source_id]
+    cat_map = category_prompts or {}
+    if category and category in cat_map and cat_map[category]:
+        return cat_map[category]
+    return global_prompt or default
+
+
+def _str_prompt_map(raw: object) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        text = str(v).strip() if v is not None else ""
+        if text:
+            out[str(k)] = text
+    return out
+
+
 class OpenAIScoring(Scoring):
     def __init__(
         self,
@@ -44,7 +77,11 @@ class OpenAIScoring(Scoring):
     ) -> None:
         self._state = state
         self._secrets = secrets
-        self._prompt: str = entry.get("prompt", _DEFAULT_PROMPT)
+        # Stage-level prompt only (empty means fall through to channel/category/global).
+        self._stage_prompt: str = str(entry.get("prompt", "") or "")
+        self._global_prompt: str = str(entry.get("global_prompt", "") or "")
+        self._category_prompts: dict[str, str] = _str_prompt_map(entry.get("category_prompts"))
+        self._channel_prompts: dict[str, str] = _str_prompt_map(entry.get("channel_prompts"))
         self._interests_prompt: str = entry.get("interests_prompt", _DEFAULT_INTERESTS_PROMPT)
         self._score_factor: float = float(entry.get("score_factor", 1.0))
         self._model: str = entry.get("model", "gpt-4o-mini")
@@ -165,13 +202,23 @@ class OpenAIScoring(Scoring):
             on_resp,
         )
 
+    def _resolve_prompt(self, content: Content) -> str:
+        return resolve_eval_prompt(
+            stage_prompt=self._stage_prompt,
+            channel_prompts=self._channel_prompts,
+            category_prompts=self._category_prompts,
+            global_prompt=self._global_prompt,
+            source_id=content.source_id,
+            category=content.category,
+        )
+
     def score(self, content: Content, effort_level: int, callback: ScoreCallback) -> None:
         if effort_level >= 2:
             text = content.title + "\n" + (content.summary or content.body)
         else:
             text = content.title + "\n" + content.body
 
-        system = self._prompt
+        system = self._resolve_prompt(content)
         if self._summary:
             system += f"\n\nUser preferences:\n{self._summary}"
 

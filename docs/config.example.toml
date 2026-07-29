@@ -87,6 +87,14 @@ Example: [["id1","id2"],["id3"]]
 Reply with ONLY the JSON.
 """
 
+# Optional EVAL (openai_score) prompt overrides by category or channel (source name).
+# Resolution: stage prompt > channel > category > openai_prompt above.
+# Editable at runtime via 'prompt > eval'.
+# [scoring.category_prompts]
+# technology = "Prefer deep-tech analysis over product launches..."
+# [scoring.channel_prompts]
+# tech_channel = "This channel often posts ads — downrank promotional posts..."
+
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 # Stages run in order; each receives the output list of the previous stage.
 # See README.md for a full stage reference.
