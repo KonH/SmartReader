@@ -400,13 +400,13 @@ class BanWordCommand(UICommand, ABC):
 # ── SetPromptCommand ───────────────────────────────────────────────────────────
 
 class SetPromptCommand(UICommand, ABC):
-    """Write scoring.openai_prompt to config and restart."""
+    """Write scoring.openai_prompt / category_prompts / channel_prompts and reload."""
 
     def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
         self._app_state = app_state
         self._shared = shared_ui_state
 
-    def _read_current_prompt(self) -> str:
+    def _read_scoring(self) -> dict:
         assert self._app_state.config is not None
         result: list[object] = [{}]
 
@@ -414,19 +414,10 @@ class SetPromptCommand(UICommand, ABC):
             result[0] = val if ok and isinstance(val, dict) else {}
 
         self._app_state.config.read_value("scoring", on_scoring)
-        scoring = result[0] if isinstance(result[0], dict) else {}
-        return str(scoring.get("openai_prompt", ""))  # type: ignore[union-attr]
+        return result[0] if isinstance(result[0], dict) else {}
 
-    def _set_prompt_and_restart(self, prompt: str) -> None:
+    def _write_scoring_and_restart(self, scoring: dict, log_label: str) -> None:
         assert self._app_state.config is not None
-        scoring_val: list[object] = [{}]
-
-        def on_scoring(ok: bool, err: str, val: object) -> None:
-            scoring_val[0] = val if ok and isinstance(val, dict) else {}
-
-        self._app_state.config.read_value("scoring", on_scoring)
-        scoring: dict = scoring_val[0] if isinstance(scoring_val[0], dict) else {}  # type: ignore[assignment]
-        scoring["openai_prompt"] = prompt
 
         def on_written(ok: bool, err: str) -> None:
             if not ok:
@@ -435,12 +426,74 @@ class SetPromptCommand(UICommand, ABC):
             self._app_state.config.save(
                 lambda ok2, err2: logger.error("set_prompt: config save error: %s", err2) if not ok2 else None
             )
-            logger.info("openai_prompt updated, reloading pipeline")
+            logger.info("%s updated, reloading pipeline", log_label)
             self._app_state.rebuild_pipeline(
                 lambda ok2, err2: logger.error("set_prompt: reload error: %s", err2) if not ok2 else None,
             )
 
         self._app_state.config.write_value("scoring", scoring, on_written)
+
+    def _read_current_prompt(self) -> str:
+        return str(self._read_scoring().get("openai_prompt", ""))
+
+    def _set_prompt_and_restart(self, prompt: str) -> None:
+        scoring = self._read_scoring()
+        scoring["openai_prompt"] = prompt
+        self._write_scoring_and_restart(scoring, "openai_prompt")
+
+    def _read_prompt_map(self, map_key: str) -> dict[str, str]:
+        raw = self._read_scoring().get(map_key, {})
+        if not isinstance(raw, dict):
+            return {}
+        return {str(k): str(v) for k, v in raw.items() if str(v).strip()}
+
+    def _set_mapped_prompt_and_restart(self, map_key: str, entry_key: str, prompt: str) -> None:
+        """Set or clear a category/channel eval prompt. Empty prompt removes the key."""
+        scoring = self._read_scoring()
+        raw = scoring.get(map_key, {})
+        prompts: dict = dict(raw) if isinstance(raw, dict) else {}
+        text = prompt.strip()
+        if text:
+            prompts[entry_key] = text
+        else:
+            prompts.pop(entry_key, None)
+        if prompts:
+            scoring[map_key] = prompts
+        else:
+            scoring.pop(map_key, None)
+        self._write_scoring_and_restart(scoring, f"{map_key}[{entry_key}]")
+
+    def _list_categories(self) -> list[str]:
+        cats: set[str] = set(self._read_prompt_map("category_prompts"))
+        assert self._app_state.config is not None
+        sources_box: list[object] = [{}]
+
+        def on_sources(ok: bool, err: str, val: object) -> None:
+            sources_box[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("sources", on_sources)
+        sources = sources_box[0] if isinstance(sources_box[0], dict) else {}
+        for entries in sources.values():
+            for entry in (entries if isinstance(entries, list) else [entries]):
+                if isinstance(entry, dict):
+                    cat = entry.get("category")
+                    if cat:
+                        cats.add(str(cat))
+        return sorted(cats)
+
+    def _list_channels(self) -> list[str]:
+        names: set[str] = set(self._read_prompt_map("channel_prompts"))
+        assert self._app_state.config is not None
+        sources_box: list[object] = [{}]
+
+        def on_sources(ok: bool, err: str, val: object) -> None:
+            sources_box[0] = val if ok and isinstance(val, dict) else {}
+
+        self._app_state.config.read_value("sources", on_sources)
+        sources = sources_box[0] if isinstance(sources_box[0], dict) else {}
+        for name in sources:
+            names.add(str(name))
+        return sorted(names)
 
 
 # ── SetInterestsPromptCommand ──────────────────────────────────────────────────

@@ -28,9 +28,33 @@ tech = "0 9 * * 1-5"
 world = "30 18 * * *"
 ```
 
+### `[scoring]`
+
+Controls interest update powers, ban/skip word lists, and LLM prompts.
+
+| Field | Description |
+|-------|-------------|
+| `upvote_power` / `downvote_power` | Interest delta applied on feedback |
+| `skip` / `ban` | Stop-words and ban-words |
+| `openai_prompt` | Global EVAL prompt for `openai_score` |
+| `openai_interests_prompt` | Preference-profile update prompt |
+| `openai_summarize_prompt` / `openai_merge_prompt` / `openai_cluster_prompt` | Other LLM prompt fallbacks |
+| `category_prompts` | Optional map `category → EVAL prompt` |
+| `channel_prompts` | Optional map `source_name → EVAL prompt` |
+
+**EVAL prompt resolution** (`openai_score` only): stage `prompt` > `channel_prompts[source]` > `category_prompts[category]` > `openai_prompt`.
+
+```toml
+[scoring.category_prompts]
+technology = "Prefer deep-tech analysis..."
+
+[scoring.channel_prompts]
+tech_channel = "Downrank promotional posts..."
+```
+
 ### `[scoring][keyword]`
 
-Controls how keyword-based scoring weights content items.
+Controls how keyword-based scoring weights content items (via pipeline stage params).
 
 | Field | Description |
 |-------|-------------|

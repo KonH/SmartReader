@@ -25,6 +25,14 @@ ban = []              # Ban-words: articles containing any of these words (title
 # openai_summarize_prompt = "..."   # Global prompt fallback for openai_summarize stages; editable at runtime via 'prompt > summarize'
 # openai_merge_prompt = "..."       # Global prompt fallback for merge_content stages; editable at runtime via 'prompt > merge'
 # openai_cluster_prompt = "..."     # Global clustering prompt fallback for merge_content stages; editable at runtime via 'prompt > cluster'
+#
+# Optional EVAL prompt overrides (openai_score only). Resolution order:
+#   stage prompt > channel_prompts[source_name] > category_prompts[category] > openai_prompt
+# Editable at runtime via 'prompt > eval' (Global / Category / Channel).
+# [scoring.category_prompts]
+# technology = "Prefer deep-tech analysis over product launches..."
+# [scoring.channel_prompts]
+# tech_channel = "This channel often posts ads — downrank promotional posts..."
 
 # ── Pipeline stages ──────────────────────────────────────────────────────────
 # Define the processing pipeline as an ordered array of stages.
