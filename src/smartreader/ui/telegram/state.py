@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ..._types import LiveFeedbackHandler
     from ...types.content import Content
 
-UIMode = Literal["", "add", "skip", "ban", "prompt", "group", "cron", "config"]
+UIMode = Literal["", "add", "edit", "remove", "skip", "ban", "prompt", "group", "sources", "cron", "config"]
 
 
 class TelegramSharedUIState(SharedUIState):

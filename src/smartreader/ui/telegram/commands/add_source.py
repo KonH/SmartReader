@@ -31,6 +31,8 @@ class TelegramAddSourceCommand(AddSourceCommand):
         sender_id = self._tg.current_sender_id
         if not self._tg.active or sender_id is None:
             return
+        while not self._tg.add_step_queue.empty():
+            self._tg.add_step_queue.get_nowait()
         self._tg.mode_state = "add"
         try:
             result = self._run_add_conversation(sender_id)
@@ -41,6 +43,7 @@ class TelegramAddSourceCommand(AddSourceCommand):
             send_action_menu(self._tg, sender_id)
         else:
             self._write_source_and_restart(result)
+            send_action_menu(self._tg, sender_id)
 
     def _run_add_conversation(self, sender_id: int) -> NewSourceParams | None:
         s = self._tg

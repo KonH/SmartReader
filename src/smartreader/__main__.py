@@ -33,6 +33,7 @@ from .ui.commands import (
     ShowLogsCommand,
     ShowStateCommand,
     SkipWordCommand,
+    SourcesGroupCommand,
 )
 from .ui.telegram import TelegramUI
 from .ui.telegram.state import TelegramSharedUIState
@@ -46,6 +47,7 @@ logger = logging.getLogger(__name__)
 # Ordered list of known abstract command types (defines what this app supports)
 _KNOWN_COMMAND_TYPES: list[type[UICommand]] = [
     ShowContentCommand,
+    SourcesGroupCommand,
     AddSourceCommand,
     BanWordCommand,
     ExplainCommand,

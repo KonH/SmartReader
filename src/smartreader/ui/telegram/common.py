@@ -88,7 +88,7 @@ def send_action_menu(s: TelegramSharedUIState, sender_id: int) -> None:
         "What next?",
         [
             [("inline", "\u25b6  SHOW", "menu:show")],
-            [("inline", "\uff0b  ADD SOURCE", "menu:add")],
+            [("inline", "\U0001f4e1  SOURCES", "menu:sources")],
             [("inline", "\U0001f4cb  LOGS", "menu:logs")],
             [("inline", "\U0001f5c4  STATE", "menu:state")],
             [("inline", "\u26d4  SKIP WORD", "menu:skip")],
@@ -114,7 +114,7 @@ def register_handlers(s: TelegramSharedUIState) -> None:
     from telethon import events  # type: ignore[import-untyped]
     client = s.client  # type: ignore[union-attr]
 
-    @client.on(events.NewMessage(incoming=True, pattern=r"(?i)^/?(run|start|add|logs|state|skip|ban|prompt|cron|explain|config|restart)"))
+    @client.on(events.NewMessage(incoming=True, pattern=r"(?i)^/?(run|start|add|sources|logs|state|skip|ban|prompt|cron|explain|config|restart)"))
     async def on_trigger(event: object) -> None:  # type: ignore[type-arg]
         sender = await event.get_sender()  # type: ignore[attr-defined]
         if not _is_controller(s, sender):
@@ -123,7 +123,7 @@ def register_handlers(s: TelegramSharedUIState) -> None:
         if s.mode_state != "":
             return
         cmd = event.raw_text.strip().lstrip("/").lower().split()[0]  # type: ignore[attr-defined]
-        mode = {"run": "ask", "start": "ask", "add": "add", "logs": "logs", "state": "state", "skip": "skip", "ban": "ban", "prompt": "prompt", "cron": "cron", "explain": "explain", "config": "config", "restart": "restart"}.get(cmd, "ask")
+        mode = {"run": "ask", "start": "ask", "add": "add", "sources": "sources", "logs": "logs", "state": "state", "skip": "skip", "ban": "ban", "prompt": "prompt", "cron": "cron", "explain": "explain", "config": "config", "restart": "restart"}.get(cmd, "ask")
         logger.info("telegram_ui: /%s from %s (mode=%s)", cmd, username(sender), mode)
         save_last_chat(event.sender_id)  # type: ignore[attr-defined]
         if mode != "ask" and s.waiting_for_category:
@@ -162,8 +162,21 @@ def register_handlers(s: TelegramSharedUIState) -> None:
         elif data in ("skip_done", "ban_done"):
             s.add_step_queue.put("__done__")
             await event.answer()  # type: ignore[attr-defined]
-        elif data in ("add_cancel", "skip_cancel", "ban_cancel", "prompt_cancel", "interests_cancel", "group_cancel", "cron_cancel"):
+        elif data in (
+            "add_cancel", "skip_cancel", "ban_cancel", "prompt_cancel",
+            "interests_cancel", "group_cancel", "sources_cancel",
+            "edit_cancel", "remove_cancel", "cron_cancel",
+        ):
             s.add_step_queue.put(None)
+            await event.answer()  # type: ignore[attr-defined]
+        elif data == "edit_keep":
+            s.add_step_queue.put("__keep__")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data == "remove_confirm":
+            s.add_step_queue.put("__confirm__")
+            await event.answer()  # type: ignore[attr-defined]
+        elif data.startswith("src_pick:"):
+            s.add_step_queue.put(data[len("src_pick:"):])
             await event.answer()  # type: ignore[attr-defined]
         elif data.startswith("cron_target:"):
             # "" means ALL; otherwise the category name
@@ -213,7 +226,7 @@ def register_handlers(s: TelegramSharedUIState) -> None:
             await event.answer()  # type: ignore[attr-defined]
         elif data.startswith("menu:"):
             cmd = data[5:]
-            mode = {"show": "ask", "add": "add", "logs": "logs", "state": "state", "skip": "skip", "ban": "ban", "prompt": "prompt", "cron": "cron", "config": "config", "explain": "explain", "restart": "restart"}.get(cmd, "ask")
+            mode = {"show": "ask", "add": "add", "sources": "sources", "logs": "logs", "state": "state", "skip": "skip", "ban": "ban", "prompt": "prompt", "cron": "cron", "config": "config", "explain": "explain", "restart": "restart"}.get(cmd, "ask")
             sender_id = event.sender_id  # type: ignore[attr-defined]
             save_last_chat(sender_id)
             if mode != "ask" and s.waiting_for_category:
