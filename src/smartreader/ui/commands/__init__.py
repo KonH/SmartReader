@@ -210,6 +210,41 @@ class ShowContentCommand(UICommand, ABC):
                 )
 
 
+# ── Source helpers ─────────────────────────────────────────────────────────────
+
+def _read_sources_dict(app_state: "AppState") -> dict:
+    assert app_state.config is not None
+    box: list[object] = [{}]
+
+    def on_sources(ok: bool, err: str, val: object) -> None:
+        box[0] = val if ok and isinstance(val, dict) else {}
+
+    app_state.config.read_value("sources", on_sources)
+    return box[0] if isinstance(box[0], dict) else {}
+
+
+def _save_sources_and_rebuild(app_state: "AppState", data: dict, log_prefix: str) -> None:
+    assert app_state.config is not None
+    app_state.config.write_value(
+        "sources", data,
+        lambda ok, err: logger.error("%s: write_value error: %s", log_prefix, err) if not ok else None,
+    )
+    app_state.config.save(
+        lambda ok, err: logger.error("%s: config save error: %s", log_prefix, err) if not ok else None,
+    )
+    logger.info("%s: config saved, reloading pipeline", log_prefix)
+    app_state.rebuild_pipeline(
+        lambda ok, err: logger.error("%s: reload error: %s", log_prefix, err) if not ok else None,
+    )
+
+
+def _source_entry_from_params(params: NewSourceParams) -> dict:
+    entry: dict = {"type": params.source_type, "externalId": params.external_id}
+    if params.category:
+        entry["category"] = params.category
+    return entry
+
+
 # ── AddSourceCommand ───────────────────────────────────────────────────────────
 
 class AddSourceCommand(UICommand, ABC):
@@ -221,30 +256,117 @@ class AddSourceCommand(UICommand, ABC):
 
     def _write_source_and_restart(self, params: NewSourceParams) -> None:
         """Append source entry to config and rebuild the pipeline in-place."""
-        assert self._app_state.config is not None
-        sources_val: list[object] = [{}]
+        data = _read_sources_dict(self._app_state)
+        data.setdefault(params.name, []).append(_source_entry_from_params(params))
+        _save_sources_and_rebuild(self._app_state, data, "add_source")
 
-        def on_sources(ok: bool, err: str, val: object) -> None:
-            sources_val[0] = val if ok and isinstance(val, dict) else {}
 
-        self._app_state.config.read_value("sources", on_sources)
-        data: dict = sources_val[0] if isinstance(sources_val[0], dict) else {}  # type: ignore[assignment]
-        entry: dict = {"type": params.source_type, "externalId": params.external_id}
+# ── EditSourceCommand ──────────────────────────────────────────────────────────
+
+class EditSourceCommand(UICommand, ABC):
+    """Update an existing source entry in config and restart."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _list_source_names(self) -> list[str]:
+        return sorted(_read_sources_dict(self._app_state).keys())
+
+    def _read_source_entry(self, name: str) -> dict | None:
+        """Return the first entry for *name*, or None if missing."""
+        data = _read_sources_dict(self._app_state)
+        entries = data.get(name)
+        if not isinstance(entries, list) or not entries:
+            return None
+        first = entries[0]
+        return dict(first) if isinstance(first, dict) else None
+
+    def _update_source_and_restart(self, params: NewSourceParams) -> None:
+        """Replace the first entry under *params.name* and rebuild the pipeline."""
+        data = _read_sources_dict(self._app_state)
+        entries = data.get(params.name)
+        if not isinstance(entries, list) or not entries:
+            logger.warning("edit_source: source %r not found", params.name)
+            return
+        # Preserve any extra keys from the existing first entry (e.g. custom)
+        updated = dict(entries[0]) if isinstance(entries[0], dict) else {}
+        updated["type"] = params.source_type
+        updated["externalId"] = params.external_id
         if params.category:
-            entry["category"] = params.category
-        data.setdefault(params.name, []).append(entry)
+            updated["category"] = params.category
+        else:
+            updated.pop("category", None)
+        data[params.name] = [updated] + [
+            e for e in entries[1:] if isinstance(e, dict)
+        ]
+        _save_sources_and_rebuild(self._app_state, data, "edit_source")
 
-        self._app_state.config.write_value(
-            "sources", data,
-            lambda ok, err: logger.error("add_source: write_value error: %s", err) if not ok else None,
+
+# ── RemoveSourceCommand ────────────────────────────────────────────────────────
+
+class RemoveSourceCommand(UICommand, ABC):
+    """Remove a source from config (and its state tracking) and restart."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    def _list_source_names(self) -> list[str]:
+        return sorted(_read_sources_dict(self._app_state).keys())
+
+    def _remove_source_and_restart(self, name: str) -> None:
+        """Delete *name* from sources config and drop it from sourceStates."""
+        data = _read_sources_dict(self._app_state)
+        if name not in data:
+            logger.warning("remove_source: source %r not found", name)
+            return
+        del data[name]
+        _save_sources_and_rebuild(self._app_state, data, "remove_source")
+        self._drop_source_state(name)
+
+    def _drop_source_state(self, name: str) -> None:
+        """Remove *name* from sourceStates.ids; leave orphan source_<id> keys."""
+        state = self._app_state._state
+        ids_box: list[list[str]] = [[]]
+
+        def on_states(ok: bool, err: str, val: object) -> None:
+            if not ok:
+                logger.error("remove_source: read sourceStates error: %s", err)
+                return
+            if isinstance(val, dict):
+                raw_ids = val.get("ids", [])
+                ids_box[0] = list(raw_ids) if isinstance(raw_ids, list) else []
+            elif isinstance(val, list):
+                ids_box[0] = list(val)
+
+        state.read_value("sourceStates", on_states)
+        ids = [sid for sid in ids_box[0] if sid != name]
+        state.write_value(
+            "sourceStates",
+            {"ids": ids},
+            lambda ok, err: logger.error(
+                "remove_source: write sourceStates error: %s", err
+            ) if not ok else None,
         )
-        self._app_state.config.save(
-            lambda ok, err: logger.error("add_source: config save error: %s", err) if not ok else None,
-        )
-        logger.info("config saved with new source, reloading pipeline")
-        self._app_state.rebuild_pipeline(
-            lambda ok, err: logger.error("add_source: reload error: %s", err) if not ok else None,
-        )
+
+
+# ── SourcesGroupCommand ────────────────────────────────────────────────────────
+
+class SourcesGroupCommand(UICommandGroup, ABC):
+    """Groups ADD / EDIT / REMOVE source sub-commands under 'sources'."""
+
+    def __init__(self, app_state: "AppState", shared_ui_state: SharedUIState) -> None:
+        self._app_state = app_state
+        self._shared = shared_ui_state
+
+    @property
+    def control_title(self) -> str:
+        return "sources"
+
+    @property
+    @abstractmethod
+    def subcommands(self) -> list[UICommand]: ...
 
 
 # ── ShowLogsCommand ────────────────────────────────────────────────────────────

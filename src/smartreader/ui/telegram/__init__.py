@@ -27,6 +27,7 @@ from .commands import (
     TelegramShowLogsCommand,
     TelegramShowStateCommand,
     TelegramSkipWordCommand,
+    TelegramSourcesGroupCommand,
 )
 from .common import (
     load_last_chat,
@@ -47,7 +48,8 @@ logger = logging.getLogger(__name__)
 
 _COMMAND_TYPES: list[type[UICommand]] = [
     TelegramShowContentCommand,
-    TelegramAddSourceCommand,
+    TelegramSourcesGroupCommand,
+    TelegramAddSourceCommand,  # /add shortcut; also offered under SOURCES
     TelegramExplainCommand,
     TelegramShowLogsCommand,
     TelegramShowStateCommand,
@@ -62,6 +64,7 @@ _COMMAND_TYPES: list[type[UICommand]] = [
 _MODE_TO_TITLE = {
     "ask": "show",   # show with category selection
     "run": "show",   # show without category selection (used by scheduled triggers)
+    "sources": "sources",
     "add": "add",
     "logs": "logs",
     "state": "state",
