@@ -24,8 +24,8 @@ class TelegramSharedUIState(SharedUIState):
         self.trigger_queue: queue.Queue[dict] = queue.Queue()
         self.category_queue: queue.Queue[dict] = queue.Queue()
         self.add_step_queue: queue.Queue[str | None] = queue.Queue()
+        # Shown content by id for inline votes; persisted via shown_content.py
         self.content_by_id: dict[str, "Content"] = {}
-        self.msg_loc_by_content_id: dict[str, tuple[int, int]] = {}
         self.live_feedback_handler: "LiveFeedbackHandler | None" = None
         self.client: object | None = None  # telethon.TelegramClient
 

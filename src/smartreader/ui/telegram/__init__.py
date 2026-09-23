@@ -38,6 +38,7 @@ from .common import (
     send_category_keyboard,
     _SESSION_PATH,
 )
+from .shown_content import load_shown_content
 from .state import TelegramSharedUIState
 from .. import UI
 
@@ -105,6 +106,11 @@ class TelegramUI(UI):
                 break
 
         cmd_by_title = {cmd.control_title.lower(): cmd for cmd in commands}
+
+        # Restore vote lookup so buttons on messages sent before a restart keep working
+        if app_state is not None:
+            s.content_by_id = load_shown_content(app_state._state)
+            logger.info("telegram_ui: restored %d shown item(s) for voting", len(s.content_by_id))
 
         while True:
             # Refresh categories

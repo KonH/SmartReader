@@ -257,20 +257,25 @@ def register_handlers(s: TelegramSharedUIState) -> None:
             if len(parts) == 3:
                 _, action, content_id = parts
                 content = s.content_by_id.get(content_id)
-                if content and s.live_feedback_handler:
+                if content is None:
+                    logger.warning("telegram_ui: vote for unknown content id %r", content_id)
+                    await event.answer("This item is too old to vote on.")  # type: ignore[attr-defined]
+                    return
+                if s.live_feedback_handler:
                     s.live_feedback_handler(content, action == "up")
-                loc = s.msg_loc_by_content_id.get(content_id)
-                if loc is not None:
-                    from telethon.tl.custom import Button  # type: ignore[import-untyped]
-                    chat_id, msg_id = loc
-                    upvoted = action == "up"
-                    up_label = f"{s.upvote_text} ✓" if upvoted else s.upvote_text
-                    down_label = f"{s.downvote_text} ✓" if not upvoted else s.downvote_text
-                    new_buttons = [[
-                        Button.inline(up_label, f"vote:up:{content_id}".encode()),
-                        Button.inline(down_label, f"vote:down:{content_id}".encode()),
-                    ]]
-                    await client.edit_message(chat_id, msg_id, buttons=new_buttons)  # type: ignore[union-attr]
+                from telethon.tl.custom import Button  # type: ignore[import-untyped]
+                upvoted = action == "up"
+                up_label = f"{s.upvote_text} ✓" if upvoted else s.upvote_text
+                down_label = f"{s.downvote_text} ✓" if not upvoted else s.downvote_text
+                new_buttons = [[
+                    Button.inline(up_label, f"vote:up:{content_id}".encode()),
+                    Button.inline(down_label, f"vote:down:{content_id}".encode()),
+                ]]
+                # Edit the message the button belongs to — works for any earlier message
+                try:
+                    await event.edit(buttons=new_buttons)  # type: ignore[attr-defined]
+                except Exception as exc:
+                    logger.warning("telegram_ui: vote button update failed: %s", exc)
             await event.answer()  # type: ignore[attr-defined]
 
 

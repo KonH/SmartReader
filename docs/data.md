@@ -96,6 +96,7 @@ Stored as a **SQLite** database using a **key = value\<json\>** pattern. Tracks 
 | `source_<sourceId>` | `sourceState` | Per-source state object containing `active` (bool) and `lastReadTs` (timestamp) |
 | `common_keyword_interests` | `dict<keyword, score>` | Global keyword interest scores shared across all sources |
 | `category_interests` | `dict<category, dict<keyword, score>>` | Per-category keyword interest scores |
+| `telegram_shown_content` | `{items: content[]}` | Content shown in Telegram (newest last, max 200), used to resolve inline votes on older messages and after restarts |
 
 ### `sourceState` Object
 

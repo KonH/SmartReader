@@ -77,7 +77,9 @@ class Coordinator:
     def _live_feedback(self, content: Content, upvote: bool) -> None:
         """Handle asynchronous inline vote from TelegramUI."""
         logger.info("live feedback for %r: upvote=%s", content.id, upvote)
-        self._pipeline.update_score(content, upvote, lambda ok, err: (
+        # app_state.pipeline, not self._pipeline — the latter goes stale after rebuild_pipeline()
+        pipeline = self._app_state.pipeline or self._pipeline
+        pipeline.update_score(content, upvote, lambda ok, err: (
             logger.error("live feedback update_score error for %s: %s", content.id, err) if not ok else None
         ))
 

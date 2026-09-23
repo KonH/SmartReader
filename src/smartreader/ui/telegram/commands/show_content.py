@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from ...commands import ShowContentCommand
 from ..common import run_async, async_send_buttons, async_send_text, send_action_menu
+from ..shown_content import remember_shown_content
 from ..state import TelegramSharedUIState
 from ..utils import md_to_html
 
@@ -35,8 +36,8 @@ class TelegramShowContentCommand(ShowContentCommand):
         sender_id = self._tg.current_sender_id
         items = self._run_pipeline(self._app_state.trigger_category)
 
-        self._tg.content_by_id = {c.id: c for c in items}
-        self._tg.msg_loc_by_content_id = {}
+        # Accumulated (not replaced) so votes on messages from earlier shows keep working
+        remember_shown_content(self._tg, self._app_state._state, items)
 
         if not items:
             if sender_id is not None:
@@ -65,12 +66,10 @@ class TelegramShowContentCommand(ShowContentCommand):
                     ("inline", self._tg.downvote_text, f"vote:down:{item.id}"),
                 ]]
                 if sender_id is not None:
-                    msg_id = run_async(
+                    run_async(
                         self._tg,
                         async_send_buttons(self._tg, sender_id, msg_text, buttons, parse_mode="html"),
                     )
-                    if isinstance(msg_id, int):
-                        self._tg.msg_loc_by_content_id[item.id] = (sender_id, msg_id)
 
         if sender_id is not None:
             send_action_menu(self._tg, sender_id)
