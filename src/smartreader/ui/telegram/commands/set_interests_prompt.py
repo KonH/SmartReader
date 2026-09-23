@@ -4,7 +4,7 @@ import html
 from typing import TYPE_CHECKING
 
 from ...commands import SetInterestsPromptCommand
-from ..common import run_async, async_send_buttons, async_send_text, send_action_menu
+from ..common import run_async, async_send_buttons, async_send_text, send_action_menu, apply_prompt_change
 from ..state import TelegramSharedUIState
 
 if TYPE_CHECKING:
@@ -42,4 +42,5 @@ class TelegramSetInterestsPromptCommand(SetInterestsPromptCommand):
         if prompt_raw is None:
             send_action_menu(self._tg, sender_id)
             return
-        self._set_interests_prompt_and_restart(prompt_raw.strip())
+        prompt = prompt_raw.strip()
+        apply_prompt_change(self._tg, sender_id, lambda: self._set_interests_prompt_and_restart(prompt))

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import Callable
 
 from .state import TelegramSharedUIState
 from .utils import username
@@ -100,6 +101,24 @@ def send_action_menu(s: TelegramSharedUIState, sender_id: int) -> None:
             [("inline", "\U0001f504  RESTART", "menu:restart")],
         ],
     ))
+
+
+def apply_prompt_change(
+    s: TelegramSharedUIState,
+    sender_id: int,
+    apply: Callable[[], None],
+    text: str = "Prompt was changed.",
+    parse_mode: str | None = None,
+) -> None:
+    """Finish a prompt edit: save + rebuild pipeline, confirm, then show the action menu.
+
+    *apply* runs synchronously (config write, save and pipeline rebuild), so the
+    confirmation is only sent once the new prompt is live.
+    """
+    s.mode_state = ""
+    apply()
+    run_async(s, async_send_text(s, sender_id, text, parse_mode=parse_mode))
+    send_action_menu(s, sender_id)
 
 
 def send_category_keyboard(
