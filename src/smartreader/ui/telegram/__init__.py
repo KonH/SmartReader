@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from ..._types import Callback
 from ...types.params import UIParams
+from ...state import State
 from ..command import UICommand
 from ..commands import ShowContentCommand
 from .commands import (
@@ -38,12 +39,19 @@ from .common import (
     send_category_keyboard,
     _SESSION_PATH,
 )
+from .pending_run import (
+    MAX_RESUMES,
+    give_up_message,
+    load_pending_run,
+    mark_run_finished,
+    mark_run_started,
+)
 from .shown_content import load_shown_content
 from .state import TelegramSharedUIState
 from .. import UI
 
 if TYPE_CHECKING:
-    pass
+    from ...state.app_state import AppState
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +120,9 @@ class TelegramUI(UI):
             s.content_by_id = load_shown_content(app_state._state)
             logger.info("telegram_ui: restored %d shown item(s) for voting", len(s.content_by_id))
 
+        if app_state is not None:
+            _resume_interrupted_run(s, app_state._state)
+
         while True:
             # Refresh categories
             categories: list[str] = []
@@ -157,8 +168,7 @@ class TelegramUI(UI):
                 if app_state is not None:
                     app_state.trigger_category = cat
                 logger.info("telegram_ui: executing %s (category=%r)", type(cmd).__name__, cat)
-                cmd.execute()
-                logger.info("telegram_ui: %s.execute() returned", type(cmd).__name__)
+                self._execute(cmd, app_state, sender_id, cat, 0)
             else:
                 # Automated / cron trigger — optional category from schedule
                 cat = item.get("category")
@@ -168,8 +178,18 @@ class TelegramUI(UI):
                     "telegram_ui: executing %s (scheduled category=%r)",
                     type(cmd).__name__, cat,
                 )
-                cmd.execute()
-                logger.info("telegram_ui: %s.execute() returned", type(cmd).__name__)
+                self._execute(cmd, app_state, sender_id, cat, int(item.get("resumes", 0)))
+
+    @staticmethod
+    def _execute(cmd: UICommand, app_state: "AppState | None", sender_id: int, cat: str | None, resumes: int) -> None:
+        # Show is persisted as in-flight so a restart mid-pipeline can resume it
+        track = isinstance(cmd, ShowContentCommand) and app_state is not None
+        if track:
+            mark_run_started(app_state._state, sender_id, cat, resumes)
+        cmd.execute()
+        if track:
+            mark_run_finished(app_state._state)
+        logger.info("telegram_ui: %s.execute() returned", type(cmd).__name__)
 
     def terminate(self) -> None:
         s = self._shared
@@ -255,6 +275,28 @@ class TelegramUI(UI):
             send_action_menu(s, last_chat)
 
         callback(True, "")
+
+
+def _resume_interrupted_run(s: TelegramSharedUIState, state: State) -> None:
+    pending = load_pending_run(state)
+    if not pending:
+        return
+    sender_id = int(pending["sender_id"])
+    resumes = int(pending.get("resumes", 0))
+    mark_run_finished(state)
+    if resumes >= MAX_RESUMES:
+        logger.error("telegram_ui: interrupted run already resumed %d time(s), giving up", resumes)
+        run_async(s, async_send_text(s, sender_id, give_up_message(pending)))
+        send_action_menu(s, sender_id)
+        return
+    logger.warning("telegram_ui: resuming interrupted run (%d/%d)", resumes + 1, MAX_RESUMES)
+    run_async(s, async_send_text(s, sender_id, f"↻ Resuming interrupted run ({resumes + 1}/{MAX_RESUMES})…"))
+    s.trigger_queue.put({
+        "sender_id": sender_id,
+        "mode": "run",
+        "category": pending.get("category"),
+        "resumes": resumes + 1,
+    })
 
 
 async def _async_start_bot(s: TelegramSharedUIState, token: str) -> None:
